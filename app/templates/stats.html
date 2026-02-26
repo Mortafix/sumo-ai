@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    {% include "partials/meta_head.html" %}
+</head>
+
+<body>
+    <main class="page">
+        <section class="panel">
+            <header class="panel-header">
+                <div>
+                    <div class="brand-title">
+                        <img class="brand-title-logo" src="/static/logo.png" alt="Logo iutub" />
+                        <h1>Statistiche interne</h1>
+                    </div>
+                    <p class="subtitle">Visualizzazione dei dati esposti da <code>/api/metrics</code>.</p>
+                </div>
+                <a class="ghost-link" href="/">
+                    <i class="fa-solid fa-arrow-left fa-ui" aria-hidden="true"></i>
+                    <span>Torna al riassunto</span>
+                </a>
+            </header>
+            <section class="stats-grid" aria-label="KPI globali">
+                <article class="stats-card">
+                    <p class="stats-label">Requests totali</p>
+                    <p class="stats-value" data-metric="since_start.requests_total" data-format="int">{{ metrics.since_start.requests_total }}</p>
+                </article>
+                <article class="stats-card">
+                    <p class="stats-label">Successi</p>
+                    <p class="stats-value" data-metric="since_start.success_total" data-format="int">{{ metrics.since_start.success_total }}</p>
+                </article>
+                <article class="stats-card">
+                    <p class="stats-label">Errori</p>
+                    <p class="stats-value" data-metric="since_start.failure_total" data-format="int">{{ metrics.since_start.failure_total }}</p>
+                </article>
+                <article class="stats-card">
+                    <p class="stats-label">Cache hit rate</p>
+                    <p class="stats-value" data-metric="since_start.cache_hit_rate" data-format="percent">{{ "%.2f"|format(metrics.since_start.cache_hit_rate * 100) }}%</p>
+                </article>
+                <article class="stats-card">
+                    <p class="stats-label">Error rate</p>
+                    <p class="stats-value" data-metric="since_start.error_rate" data-format="percent">{{ "%.2f"|format(metrics.since_start.error_rate * 100) }}%</p>
+                </article>
+                <article class="stats-card">
+                    <p class="stats-label">Latenza media</p>
+                    <p class="stats-value" data-metric="since_start.avg_processing_ms" data-format="seconds">{{ "%.2f"|format(metrics.since_start.avg_processing_ms / 1000) }} s</p>
+                </article>
+            </section>
+            <section class="stats-section">
+                <h2 class="summary-title">
+                    <svg viewBox="0 0 24 24" class="icon icon-md" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M4 6h16M4 12h16M4 18h8" />
+                    </svg>
+                    Dettaglio per modalita
+                </h2>
+                <div class="stats-mode-grid">
+                    <article class="summary-card">
+                        <h3 class="stats-mode-title">One line</h3>
+                        <div class="stats-list">
+                            <p><span>Requests</span><strong data-metric="per_mode.one_line.requests_total" data-format="int">{{ metrics.per_mode.one_line.requests_total }}</strong></p>
+                            <p><span>Successi</span><strong data-metric="per_mode.one_line.success_total" data-format="int">{{ metrics.per_mode.one_line.success_total }}</strong></p>
+                            <p><span>Errori</span><strong data-metric="per_mode.one_line.failure_total" data-format="int">{{ metrics.per_mode.one_line.failure_total }}</strong></p>
+                            <p><span>Cache hit rate</span><strong data-metric="per_mode.one_line.cache_hit_rate" data-format="percent">{{ "%.2f"|format(metrics.per_mode.one_line.cache_hit_rate * 100) }}%</strong></p>
+                            <p><span>Error rate</span><strong data-metric="per_mode.one_line.error_rate" data-format="percent">{{ "%.2f"|format(metrics.per_mode.one_line.error_rate * 100) }}%</strong></p>
+                            <p><span>Latenza media</span><strong data-metric="per_mode.one_line.avg_processing_ms" data-format="seconds">{{ "%.2f"|format(metrics.per_mode.one_line.avg_processing_ms / 1000) }} s</strong></p>
+                        </div>
+                    </article>
+                    <article class="summary-card">
+                        <h3 class="stats-mode-title">Veloce</h3>
+                        <div class="stats-list">
+                            <p><span>Requests</span><strong data-metric="per_mode.veloce.requests_total" data-format="int">{{ metrics.per_mode.veloce.requests_total }}</strong></p>
+                            <p><span>Successi</span><strong data-metric="per_mode.veloce.success_total" data-format="int">{{ metrics.per_mode.veloce.success_total }}</strong></p>
+                            <p><span>Errori</span><strong data-metric="per_mode.veloce.failure_total" data-format="int">{{ metrics.per_mode.veloce.failure_total }}</strong></p>
+                            <p><span>Cache hit rate</span><strong data-metric="per_mode.veloce.cache_hit_rate" data-format="percent">{{ "%.2f"|format(metrics.per_mode.veloce.cache_hit_rate * 100) }}%</strong></p>
+                            <p><span>Error rate</span><strong data-metric="per_mode.veloce.error_rate" data-format="percent">{{ "%.2f"|format(metrics.per_mode.veloce.error_rate * 100) }}%</strong></p>
+                            <p><span>Latenza media</span><strong data-metric="per_mode.veloce.avg_processing_ms" data-format="seconds">{{ "%.2f"|format(metrics.per_mode.veloce.avg_processing_ms / 1000) }} s</strong></p>
+                        </div>
+                    </article>
+                    <article class="summary-card">
+                        <h3 class="stats-mode-title">Dettagliato</h3>
+                        <div class="stats-list">
+                            <p><span>Requests</span><strong data-metric="per_mode.dettagliato.requests_total" data-format="int">{{ metrics.per_mode.dettagliato.requests_total }}</strong></p>
+                            <p><span>Successi</span><strong data-metric="per_mode.dettagliato.success_total" data-format="int">{{ metrics.per_mode.dettagliato.success_total }}</strong></p>
+                            <p><span>Errori</span><strong data-metric="per_mode.dettagliato.failure_total" data-format="int">{{ metrics.per_mode.dettagliato.failure_total }}</strong></p>
+                            <p><span>Cache hit rate</span><strong data-metric="per_mode.dettagliato.cache_hit_rate" data-format="percent">{{ "%.2f"|format(metrics.per_mode.dettagliato.cache_hit_rate * 100) }}%</strong></p>
+                            <p><span>Error rate</span><strong data-metric="per_mode.dettagliato.error_rate" data-format="percent">{{ "%.2f"|format(metrics.per_mode.dettagliato.error_rate * 100) }}%</strong></p>
+                            <p><span>Latenza media</span><strong data-metric="per_mode.dettagliato.avg_processing_ms" data-format="seconds">{{ "%.2f"|format(metrics.per_mode.dettagliato.avg_processing_ms / 1000) }} s</strong></p>
+                        </div>
+                    </article>
+                </div>
+            </section>
+            <p id="stats-last-updated" class="stats-updated">Aggiornamento live ogni 10 secondi.</p>
+        </section>
+    </main>
+    <script>
+    (() => {
+        const OUTPUTS = Array.from(document.querySelectorAll("[data-metric]"));
+        const updatedEl = document.getElementById("stats-last-updated");
+
+        const readValue = (obj, path) => {
+            return path.split(".").reduce((acc, key) => (acc ? acc[key] : undefined), obj);
+        };
+
+        const formatters = {
+            int: (value) => String(value ? ? 0),
+            percent: (value) => `${((value ?? 0) * 100).toFixed(2)}%`,
+            seconds: (value) => `${((value ?? 0) / 1000).toFixed(2)} s`,
+        };
+
+        const writeMetrics = (metrics) => {
+            for (const node of OUTPUTS) {
+                const metricKey = node.dataset.metric;
+                const formatKey = node.dataset.format || "int";
+                const rawValue = readValue(metrics, metricKey);
+                const formatter = formatters[formatKey] || formatters.int;
+                node.textContent = formatter(rawValue);
+            }
+            if (updatedEl) {
+                const now = new Date();
+                updatedEl.textContent = `Ultimo aggiornamento: ${now.toLocaleTimeString("it-IT")}`;
+            }
+        };
+
+        const refreshMetrics = async () => {
+            try {
+                const response = await fetch("/api/metrics", { cache: "no-store" });
+                if (!response.ok) {
+                    throw new Error("metrics fetch failed");
+                }
+                const data = await response.json();
+                writeMetrics(data);
+            } catch (_error) {
+                if (updatedEl) {
+                    updatedEl.textContent = "Aggiornamento non disponibile al momento.";
+                }
+            }
+        };
+
+        window.setInterval(refreshMetrics, 10000);
+        refreshMetrics();
+    })();
+    </script>
+</body>
+
+</html>

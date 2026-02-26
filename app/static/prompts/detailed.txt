@@ -1,0 +1,11 @@
+Produci il riassunto in italiano seguendo ESATTAMENTE questa struttura:
+### Contesto
+- 1 paragrafo chiaro sul contesto generale.
+### Riassunto dettagliato
+- 2-4 paragrafi completi con passaggi importanti.
+Punti chiave:
+- 6-10 bullet points concreti.
+Conclusioni pratiche:
+- 3-5 bullet points utili.
+Usa Markdown con **grassetto** e *corsivo* solo se serve.
+Non usare sezioni extra oltre a quelle richieste.

@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    {% include "partials/meta_head.html" %}
+</head>
+
+<body>
+    <main class="page">
+        <section class="panel">
+            <header class="panel-header">
+                <div>
+                    <div class="brand-title">
+                        <img class="brand-title-logo" src="/static/logo.png" alt="Logo iutub" />
+                        <img class="brand-title-text" src="/static/text_white.png" alt="Logo iutub" />
+                    </div>
+                    <p class="subtitle">Genera il riassunto di un video YouTube</p>
+                </div>
+                <a class="ghost-link" href="/stats">
+                    <i class="fa-solid fa-chart-line fa-ui" aria-hidden="true"></i>
+                    <span>Vedi statistiche</span>
+                </a>
+            </header>
+            <form id="summarize-form" action="/summarize" method="post" class="form">
+                <label for="url">URL video YouTube</label>
+                <div class="url-input-wrap">
+                    <span class="input-icon" aria-hidden="true">
+                        <i class="fa-solid fa-link fa-ui"></i>
+                    </span>
+                    <input id="url" name="url" type="url" placeholder="https://www.youtube.com/watch?v=..." value="{{ url }}" required />
+                </div>
+                <aside id="url-preview" class="url-preview" aria-live="polite" hidden>
+                    <img id="url-preview-image" class="url-preview-image" alt="Copertina video YouTube" loading="lazy" />
+                    <div class="url-preview-text">
+                        <p id="url-preview-title" class="url-preview-title">Video YouTube</p>
+                        <p id="url-preview-channel" class="url-preview-channel">Canale YouTube</p>
+                    </div>
+                </aside>
+                <fieldset class="mode-group">
+                    <label class="mode-option">
+                        <input class="mode-option-input" type="radio" name="mode" value="one_line" {% if mode=="one_line" %}checked{% endif %}>
+                        <span class="mode-option-card">
+                            <span class="mode-option-text">
+                                <span class="mode-option-title">One line</span>
+                                <span class="mode-option-description">Una singola riga con l'informazione chiave</span>
+                            </span>
+                            <span class="mode-option-check" aria-hidden="true">
+                                <i class="fa-solid fa-circle-check"></i>
+                            </span>
+                        </span>
+                    </label>
+                    <label class="mode-option">
+                        <input class="mode-option-input" type="radio" name="mode" value="veloce" {% if mode=="veloce" %}checked{% endif %}>
+                        <span class="mode-option-card">
+                            <span class="mode-option-text">
+                                <span class="mode-option-title">Veloce</span>
+                                <span class="mode-option-description">Un paragrafo con 3 punti chiave</span>
+                            </span>
+                            <span class="mode-option-check" aria-hidden="true">
+                                <i class="fa-solid fa-circle-check"></i>
+                            </span>
+                        </span>
+                    </label>
+                    <label class="mode-option">
+                        <input class="mode-option-input" type="radio" name="mode" value="dettagliato" {% if mode=="dettagliato" %}checked{% endif %}>
+                        <span class="mode-option-card">
+                            <span class="mode-option-text">
+                                <span class="mode-option-title">Dettagliato</span>
+                                <span class="mode-option-description">Riassunto completo con contesto, dettagli e conclusioni</span>
+                            </span>
+                            <span class="mode-option-check" aria-hidden="true">
+                                <i class="fa-solid fa-circle-check"></i>
+                            </span>
+                        </span>
+                    </label>
+                </fieldset>
+                <button id="submit-button" class="submit-button" type="submit">
+                    <span class="button-icon" aria-hidden="true">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </span>
+                    <span class="button-label">Genera riassunto</span>
+                    <span class="button-spinner" aria-hidden="true">
+                        <i class="fa-solid fa-spinner"></i>
+                    </span>
+                </button>
+            </form>
+            {% if error %}
+            <div class="message error">{{ error }}</div>
+            {% endif %}
+            {% if result %}
+            <article class="result">
+                <div class="meta-chips" aria-label="Meta riassunto">
+                    <span class="meta-chip">
+                        <i class="fa-solid fa-language fa-ui" aria-hidden="true"></i>
+                        <span class="meta-text">
+                            <span class="meta-label">Lingua</span>
+                            <span class="meta-value">{{ result.meta.language }}</span>
+                        </span>
+                    </span>
+                    <span class="meta-chip">
+                        <i class="fa-solid fa-clock fa-ui" aria-hidden="true"></i>
+                        <span class="meta-text">
+                            <span class="meta-label">Latenza</span>
+                            <span class="meta-value">{{ "%.2f"|format(result.meta.processing_ms / 1000) }} s</span>
+                        </span>
+                    </span>
+                </div>
+                <h2 class="summary-title">
+                    <i class="fa-solid fa-file-lines fa-ui" aria-hidden="true"></i>
+                    Riassunto
+                </h2>
+                <div class="summary-card">
+                    <div class="summary-content">{{ result.summary_html | safe }}</div>
+                </div>
+            </article>
+            {% endif %}
+        </section>
+    </main>
+    <script>
+    (() => {
+        const form = document.getElementById("summarize-form");
+        const submitButton = document.getElementById("submit-button");
+        const buttonLabel = submitButton ? submitButton.querySelector(".button-label") : null;
+        const urlInput = document.getElementById("url");
+        const previewRoot = document.getElementById("url-preview");
+        const previewImage = document.getElementById("url-preview-image");
+        const previewTitle = document.getElementById("url-preview-title");
+        const previewChannel = document.getElementById("url-preview-channel");
+
+        let previewToken = 0;
+
+        const idPattern = /^[a-zA-Z0-9_-]{11}$/;
+
+        const hidePreview = () => {
+            if (!previewRoot) {
+                return;
+            }
+            previewRoot.hidden = true;
+        };
+
+        const showPreview = () => {
+            if (!previewRoot) {
+                return;
+            }
+            previewRoot.hidden = false;
+        };
+
+        const extractVideoId = (value) => {
+            const raw = (value || "").trim();
+            if (!raw) {
+                return null;
+            }
+
+            if (idPattern.test(raw)) {
+                return raw;
+            }
+
+            let parsed;
+            try {
+                parsed = new URL(raw);
+            } catch (_err) {
+                return null;
+            }
+
+            const hostname = parsed.hostname.toLowerCase();
+            const pathParts = parsed.pathname.split("/").filter(Boolean);
+
+            if (hostname.includes("youtu.be") && pathParts.length > 0) {
+                const directId = pathParts[0];
+                if (idPattern.test(directId)) {
+                    return directId;
+                }
+            }
+
+            if (hostname.includes("youtube.com")) {
+                if (parsed.pathname === "/watch") {
+                    const watchId = parsed.searchParams.get("v");
+                    if (watchId && idPattern.test(watchId)) {
+                        return watchId;
+                    }
+                }
+
+                if (pathParts.length > 1 && ["shorts", "embed", "live"].includes(pathParts[0])) {
+                    const pathId = pathParts[1];
+                    if (idPattern.test(pathId)) {
+                        return pathId;
+                    }
+                }
+            }
+
+            return null;
+        };
+
+        const updatePreview = async () => {
+            if (!urlInput || !previewImage || !previewTitle || !previewChannel) {
+                return;
+            }
+
+            const videoId = extractVideoId(urlInput.value);
+            if (!videoId) {
+                hidePreview();
+                return;
+            }
+
+            const currentToken = ++previewToken;
+            const canonicalUrl = `https://www.youtube.com/watch?v=${videoId}`;
+            showPreview();
+
+            previewImage.src = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+            previewTitle.textContent = "Video YouTube";
+            previewChannel.textContent = "Recupero dettagli...";
+
+            try {
+                const endpoint = `https://www.youtube.com/oembed?url=${encodeURIComponent(canonicalUrl)}&format=json`;
+                const response = await fetch(endpoint);
+                if (!response.ok) {
+                    throw new Error("oEmbed unavailable");
+                }
+
+                const data = await response.json();
+                if (currentToken !== previewToken) {
+                    return;
+                }
+
+                previewTitle.textContent = data.title || "Video YouTube";
+                previewChannel.textContent = data.author_name || "Canale YouTube";
+            } catch (_err) {
+                if (currentToken !== previewToken) {
+                    return;
+                }
+
+                previewTitle.textContent = "Video YouTube";
+                previewChannel.textContent = `ID: ${videoId}`;
+            }
+        };
+
+        const debounce = (fn, delayMs) => {
+            let timer;
+            return (...args) => {
+                clearTimeout(timer);
+                timer = window.setTimeout(() => fn(...args), delayMs);
+            };
+        };
+
+        if (form && submitButton && buttonLabel) {
+            form.addEventListener("submit", () => {
+                submitButton.disabled = true;
+                submitButton.classList.add("is-loading");
+                form.setAttribute("aria-busy", "true");
+                buttonLabel.textContent = "Generazione...";
+            });
+        }
+
+        if (urlInput) {
+            const debouncedUpdate = debounce(updatePreview, 220);
+            urlInput.addEventListener("input", debouncedUpdate);
+            urlInput.addEventListener("change", updatePreview);
+            urlInput.addEventListener("paste", () => {
+                window.setTimeout(updatePreview, 0);
+            });
+
+            updatePreview();
+        }
+    })();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,7 @@
+Produci il riassunto in italiano seguendo ESATTAMENTE questa struttura:
+Paragrafo breve:
+- 1 paragrafo compatto (4-6 frasi) con il senso generale.
+Punti chiave:
+- ESATTAMENTE 3 bullet points essenziali.
+Usa Markdown e valorizza termini rilevanti con **grassetto** o *corsivo* solo se serve.
+Non usare sezioni extra oltre a quelle richieste.

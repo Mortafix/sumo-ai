@@ -1,0 +1,5 @@
+Produci il riassunto in italiano seguendo ESATTAMENTE queste regole:
+- Restituisci UNA SOLA riga.
+- Deve contenere solo l'informazione piu importante.
+- Niente elenchi, niente titoli, niente testo extra.
+- Usa Markdown con **grassetto** e *corsivo* solo se serve.

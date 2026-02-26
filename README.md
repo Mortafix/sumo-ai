@@ -1,0 +1,161 @@
+# Sumo AI
+
+Applicazione FastAPI + Jinja che:
+- accetta URL YouTube
+- recupera trascrizione
+- genera riassunto con AI (Ollama o OpenAI)
+- espone metriche runtime e dashboard `/stats`
+
+## Requisiti
+
+- Python 3.10+
+- [Ollama](https://ollama.com/) in esecuzione locale
+- OpenAI API key
+
+## Setup
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+ollama pull llama3.2:1b
+```
+
+## Avvio
+
+```bash
+uvicorn app.main:app --reload
+```
+
+Apri: `http://127.0.0.1:8000`
+
+## Query Params supportati
+
+- `url`: link YouTube
+- `mode`: `one_line`, `veloce` oppure `dettagliato`
+- alias accettati lato pagina HTML: `oneline`, `one-line`, `short`, `fast`, `long`, `detailed`
+
+Esempio:
+
+`http://127.0.0.1:8000/?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ&mode=veloce`
+
+## Variabili ambiente opzionali
+
+- `AI_PROVIDER` valori supportati: `ollama`, `openai`
+- `OLLAMA_BASE_URL`
+- `OLLAMA_MODEL`
+- `OPENAI_BASE_URL` (default: `https://api.openai.com/v1`)
+- `OPENAI_API_KEY` 
+- `OPENAI_MODEL` 
+- `SITE_URL` per canonical/meta URL
+- `FOLDER` root da cui leggere i prompt in `app/static/prompts/`
+
+## Prompt Modes
+
+I template prompt sono file statici:
+- `app/static/prompts/oneline.txt`
+- `app/static/prompts/short.txt`
+- `app/static/prompts/detailed.txt`
+
+Nota: con `FOLDER=.` l'app si aspetta di essere avviata dalla root del progetto.
+
+## API JSON
+
+Endpoint:
+
+`POST /api/summarize`
+
+Request:
+
+```json
+{
+  "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "mode": "veloce"
+}
+```
+
+Valori `mode` accettati da API: `one_line`, `veloce`, `dettagliato`.
+
+Response:
+
+```json
+{
+  "summary": "....",
+  "meta": {
+    "video_id": "dQw4w9WgXcQ",
+    "language": "it",
+    "mode": "veloce",
+    "cached": false,
+    "processing_ms": 842.7
+  }
+}
+```
+
+Errori principali:
+- `400`: URL YouTube non valido
+- `422`: payload JSON non valido
+- `503`: transcript non disponibile o errore modello locale
+
+Endpoint metriche:
+
+`GET /api/metrics`
+
+Response:
+
+```json
+{
+  "since_start": {
+    "requests_total": 3,
+    "success_total": 3,
+    "failure_total": 0,
+    "cache_hits_total": 1,
+    "cache_misses_total": 2,
+    "cache_hit_rate": 0.3333,
+    "error_rate": 0.0,
+    "avg_processing_ms": 421.73
+  },
+  "per_mode": {
+    "one_line": {
+      "requests_total": 2,
+      "success_total": 2,
+      "failure_total": 0,
+      "cache_hits_total": 1,
+      "cache_misses_total": 1,
+      "cache_hit_rate": 0.5,
+      "error_rate": 0.0,
+      "avg_processing_ms": 257.1
+    },
+    "veloce": {
+      "requests_total": 1,
+      "success_total": 1,
+      "failure_total": 0,
+      "cache_hits_total": 0,
+      "cache_misses_total": 1,
+      "cache_hit_rate": 0.0,
+      "error_rate": 0.0,
+      "avg_processing_ms": 751.0
+    },
+    "dettagliato": {
+      "requests_total": 0,
+      "success_total": 0,
+      "failure_total": 0,
+      "cache_hits_total": 0,
+      "cache_misses_total": 0,
+      "cache_hit_rate": 0.0,
+      "error_rate": 0.0,
+      "avg_processing_ms": 0.0
+    }
+  }
+}
+```
+
+Dashboard metriche HTML:
+
+`GET /stats`
+
+## Cache
+
+- Tipo: in-memory (process local)
+- Chiave: `video_id:mode`
+- TTL: `3600` secondi (1 ora)
+- Invalidazione: lazy alla lettura
