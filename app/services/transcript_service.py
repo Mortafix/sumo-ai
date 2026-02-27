@@ -1,8 +1,12 @@
+from os import getenv
 from re import compile
 from urllib.parse import parse_qs, urlparse
 
+from dotenv import load_dotenv
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api.proxies import GenericProxyConfig
 
+load_dotenv()
 VIDEO_ID_RE = compile(r"^[a-zA-Z0-9_-]{11}$")
 
 
@@ -48,7 +52,14 @@ def extract_video_id(url_or_id: str) -> str:
 def fetch_transcript(url_or_id: str) -> dict:
     video_id = extract_video_id(url_or_id)
     try:
-        transcript = YouTubeTranscriptApi().fetch(video_id, languages=["it", "en"])
+        proxy_url = (
+            f"http://{getenv('PROXY_USER')}:{getenv('PROXY_PWD')}"
+            f"@{getenv('PROXY_IP')}:{getenv('PROXY_PORT')}"
+        )
+        yt_api = YouTubeTranscriptApi(
+            proxy_config=GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
+        )
+        transcript = yt_api.fetch(video_id, languages=["it", "en"])
     except Exception as exc:
         raise TranscriptError(
             "Impossibile recuperare la trascrizione. "
