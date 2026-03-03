@@ -39,6 +39,8 @@ Esempio:
 
 `http://127.0.0.1:8000/?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ&mode=veloce`
 
+Con `url` nei query params, la pagina viene renderizzata subito (form + preview + bottone) e poi avvia automaticamente il submit verso `POST /summarize` lato client.
+
 ## Variabili ambiente opzionali
 
 - `AI_PROVIDER` valori supportati: `ollama`, `openai`

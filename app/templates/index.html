@@ -23,7 +23,7 @@
                     <span>Vedi statistiche</span>
                 </a>
             </header>
-            <form id="summarize-form" action="/summarize" method="post" class="form">
+            <form id="summarize-form" action="/summarize" method="post" class="form" data-auto-start="{{ '1' if auto_start else '0' }}">
                 <label for="url">URL video YouTube</label>
                 <div class="url-input-wrap">
                     <span class="input-icon" aria-hidden="true">
@@ -130,6 +130,7 @@
         const previewChannel = document.getElementById("url-preview-channel");
 
         let previewToken = 0;
+        let isSubmitting = false;
 
         const idPattern = /^[a-zA-Z0-9_-]{11}$/;
 
@@ -244,12 +245,25 @@
             };
         };
 
-        if (form && submitButton && buttonLabel) {
-            form.addEventListener("submit", () => {
-                submitButton.disabled = true;
-                submitButton.classList.add("is-loading");
-                form.setAttribute("aria-busy", "true");
-                buttonLabel.textContent = "Generazione...";
+        const applyLoadingState = () => {
+            if (isSubmitting || !form || !submitButton || !buttonLabel) {
+                return;
+            }
+
+            isSubmitting = true;
+            submitButton.disabled = true;
+            submitButton.classList.add("is-loading");
+            form.setAttribute("aria-busy", "true");
+            buttonLabel.textContent = "Generazione...";
+        };
+
+        if (form) {
+            form.addEventListener("submit", (event) => {
+                if (isSubmitting) {
+                    event.preventDefault();
+                    return;
+                }
+                applyLoadingState();
             });
         }
 
@@ -262,6 +276,23 @@
             });
 
             updatePreview();
+        }
+
+        const shouldAutoStart = Boolean(
+            form
+            && urlInput
+            && form.dataset.autoStart === "1"
+            && (urlInput.value || "").trim()
+        );
+        if (shouldAutoStart) {
+            window.requestAnimationFrame(() => {
+                window.setTimeout(() => {
+                    if (!form || isSubmitting) {
+                        return;
+                    }
+                    form.requestSubmit();
+                }, 120);
+            });
         }
     })();
     </script>

@@ -256,6 +256,7 @@ async def index(
     mode: str = "veloce",
 ):
     selected_mode = normalize_mode(mode)
+    has_url = bool((url or "").strip())
     context: dict = {
         "request": request,
         "meta": build_meta("index", "/"),
@@ -263,20 +264,9 @@ async def index(
         "mode": selected_mode,
         "result": None,
         "error": None,
+        "auto_start": has_url,
         "metrics": await metrics_service.snapshot(),
     }
-
-    if url:
-        try:
-            context["result"] = await summarize_video(url=url, mode=selected_mode)
-            context["result"]["summary_html"] = render_summary_html(
-                context["result"]["summary"]
-            )
-        except (TranscriptError, SummarizerError) as exc:
-            context["error"] = str(exc)
-        except Exception as exc:  # pragma: no cover - defensive fallback
-            context["error"] = f"Unexpected error: {exc}"
-        context["metrics"] = await metrics_service.snapshot()
 
     return templates.TemplateResponse("index.html", context)
 
@@ -305,6 +295,7 @@ async def summarize(
         "mode": selected_mode,
         "result": None,
         "error": None,
+        "auto_start": False,
         "metrics": await metrics_service.snapshot(),
     }
 
