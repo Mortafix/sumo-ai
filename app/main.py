@@ -5,14 +5,17 @@ from os import getenv
 from time import perf_counter
 from typing import Literal
 
-from app.services.cache_service import InMemoryTTLCache, make_key
+from app.services.cache_service import (InMemoryChatSessionStore,
+                                        InMemoryTTLCache, make_key)
 from app.services.metrics_service import InMemoryMetrics
-from app.services.summarizer_service import SummarizerError, summarize_text
+from app.services.summarizer_service import (SummarizerError,
+                                             answer_about_transcript,
+                                             summarize_text)
 from app.services.transcript_service import (InvalidYouTubeUrlError,
                                              TranscriptError, extract_video_id,
                                              fetch_transcript)
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -20,6 +23,8 @@ from pydantic import BaseModel, Field
 SummaryMode = Literal["one_line", "veloce", "dettagliato"]
 MetaPage = Literal["index", "stats"]
 SUMMARY_CACHE_TTL_SECONDS = 3600
+CHAT_MAX_USER_MESSAGES = 3
+CHAT_SESSION_TTL_SECONDS = SUMMARY_CACHE_TTL_SECONDS
 SITE_URL = getenv("SITE_URL").rstrip("/")
 SITE_NAME = "Sumo AI"
 SITE_LABEL = "sumo"
@@ -32,6 +37,7 @@ app = FastAPI(title="Sumo AI")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 summary_cache = InMemoryTTLCache()
+chat_sessions = InMemoryChatSessionStore()
 metrics_service = InMemoryMetrics()
 logger = logging.getLogger(__name__)
 
@@ -190,6 +196,61 @@ def elapsed_ms(started_at: float) -> float:
     return max((perf_counter() - started_at) * 1000.0, 0.001)
 
 
+def chat_view(session: dict) -> dict:
+    remaining_messages = max(
+        CHAT_MAX_USER_MESSAGES - session["user_messages_count"], 0
+    )
+    return {
+        "chat_id": session["chat_id"],
+        "chat_token": session["active_form_token"],
+        "history": session["history"],
+        "remaining_messages": remaining_messages,
+        "max_messages": CHAT_MAX_USER_MESSAGES,
+        "limit_reached": remaining_messages == 0,
+    }
+
+
+def summary_result_from_session(session: dict) -> dict:
+    summary_text = session["summary"]
+    return {
+        "summary": summary_text,
+        "summary_html": render_summary_html(summary_text),
+        "transcript": session["transcript"],
+        "meta": {
+            "video_id": session["video_id"],
+            "language": session["language"],
+            "mode": normalize_mode(session["mode"]),
+            "cached": True,
+            "processing_ms": session["processing_ms"],
+        },
+    }
+
+
+async def base_index_context(
+    request: Request,
+    *,
+    url: str = "",
+    mode: SummaryMode = "veloce",
+    auto_start: bool = False,
+    result: dict | None = None,
+    error: str | None = None,
+    chat: dict | None = None,
+    chat_error: str | None = None,
+) -> dict:
+    return {
+        "request": request,
+        "meta": build_meta("index", "/"),
+        "url": url,
+        "mode": mode,
+        "result": result,
+        "error": error,
+        "chat": chat,
+        "chat_error": chat_error,
+        "auto_start": auto_start,
+        "metrics": await metrics_service.snapshot(),
+    }
+
+
 async def summarize_video(url: str, mode: SummaryMode) -> dict:
     await metrics_service.record_request(mode)
     started_at = perf_counter()
@@ -199,6 +260,29 @@ async def summarize_video(url: str, mode: SummaryMode) -> dict:
         cache_key = make_key(video_id=video_id, mode=mode)
         cache_hit = await summary_cache.get(cache_key)
         if cache_hit:
+            cached_summary = cache_hit.get("summary", "")
+            cached_language = cache_hit.get("language", "sconosciuto")
+            cached_transcript = (cache_hit.get("transcript") or "").strip()
+            if not cached_transcript:
+                try:
+                    transcript_data = fetch_transcript(video_id)
+                    cached_transcript = transcript_data["text"]
+                    await summary_cache.set(
+                        cache_key,
+                        {
+                            "summary": cached_summary,
+                            "language": cached_language,
+                            "transcript": cached_transcript,
+                        },
+                        ttl_seconds=SUMMARY_CACHE_TTL_SECONDS,
+                    )
+                except TranscriptError as exc:
+                    logger.warning(
+                        "cache_hit_missing_transcript video_id=%s mode=%s error=%s",
+                        video_id,
+                        mode,
+                        exc,
+                    )
             processing_ms = elapsed_ms(started_at)
             await metrics_service.record_success(
                 mode=mode,
@@ -206,10 +290,11 @@ async def summarize_video(url: str, mode: SummaryMode) -> dict:
                 cached=True,
             )
             return {
-                "summary": cache_hit["summary"],
+                "summary": cached_summary,
+                "transcript": cached_transcript,
                 "meta": {
                     "video_id": video_id,
-                    "language": cache_hit["language"],
+                    "language": cached_language,
                     "mode": mode,
                     "cached": True,
                     "processing_ms": processing_ms,
@@ -223,6 +308,7 @@ async def summarize_video(url: str, mode: SummaryMode) -> dict:
             {
                 "summary": summary,
                 "language": transcript_data["language"],
+                "transcript": transcript_data["text"],
             },
             ttl_seconds=SUMMARY_CACHE_TTL_SECONDS,
         )
@@ -234,6 +320,7 @@ async def summarize_video(url: str, mode: SummaryMode) -> dict:
         )
         return {
             "summary": summary,
+            "transcript": transcript_data["text"],
             "meta": {
                 "video_id": video_id,
                 "language": transcript_data["language"],
@@ -257,17 +344,12 @@ async def index(
 ):
     selected_mode = normalize_mode(mode)
     has_url = bool((url or "").strip())
-    context: dict = {
-        "request": request,
-        "meta": build_meta("index", "/"),
-        "url": url or "",
-        "mode": selected_mode,
-        "result": None,
-        "error": None,
-        "auto_start": has_url,
-        "metrics": await metrics_service.snapshot(),
-    }
-
+    context = await base_index_context(
+        request,
+        url=url or "",
+        mode=selected_mode,
+        auto_start=has_url,
+    )
     return templates.TemplateResponse("index.html", context)
 
 
@@ -288,22 +370,25 @@ async def summarize(
     mode: str = Form("veloce"),
 ):
     selected_mode = normalize_mode(mode)
-    context: dict = {
-        "request": request,
-        "meta": build_meta("index", "/"),
-        "url": url,
-        "mode": selected_mode,
-        "result": None,
-        "error": None,
-        "auto_start": False,
-        "metrics": await metrics_service.snapshot(),
-    }
+    context = await base_index_context(request, url=url, mode=selected_mode)
 
     try:
         context["result"] = await summarize_video(url=url, mode=selected_mode)
         context["result"]["summary_html"] = render_summary_html(
             context["result"]["summary"]
         )
+        chat_session = await chat_sessions.create(
+            {
+                "video_id": context["result"]["meta"]["video_id"],
+                "mode": context["result"]["meta"]["mode"],
+                "language": context["result"]["meta"]["language"],
+                "summary": context["result"]["summary"],
+                "transcript": context["result"]["transcript"],
+                "processing_ms": context["result"]["meta"]["processing_ms"],
+            },
+            ttl_seconds=CHAT_SESSION_TTL_SECONDS,
+        )
+        context["chat"] = chat_view(chat_session)
     except (TranscriptError, SummarizerError) as exc:
         context["error"] = str(exc)
     except Exception as exc:  # pragma: no cover - defensive fallback
@@ -311,6 +396,92 @@ async def summarize(
     context["metrics"] = await metrics_service.snapshot()
 
     return templates.TemplateResponse("index.html", context)
+
+
+@app.post("/chat", response_class=HTMLResponse)
+async def chat(
+    request: Request,
+    chat_id: str = Form(...),
+    chat_token: str = Form(...),
+    message: str = Form(...),
+):
+    session = await chat_sessions.get(chat_id)
+    if session is None:
+        context = await base_index_context(
+            request,
+            error="Sessione chat non valida o scaduta.",
+        )
+        return templates.TemplateResponse("index.html", context)
+
+    cleaned_message = (message or "").strip()
+    result = summary_result_from_session(session)
+    context = await base_index_context(
+        request,
+        url=f"https://www.youtube.com/watch?v={session['video_id']}",
+        mode=normalize_mode(session["mode"]),
+        result=result,
+        chat=chat_view(session),
+    )
+
+    if not cleaned_message:
+        context["chat_error"] = "Inserisci un messaggio prima di inviare."
+        return templates.TemplateResponse("index.html", context)
+
+    if session["user_messages_count"] >= CHAT_MAX_USER_MESSAGES:
+        context["chat_error"] = (
+            f"Hai raggiunto il limite di {CHAT_MAX_USER_MESSAGES} messaggi."
+        )
+        return templates.TemplateResponse("index.html", context)
+
+    try:
+        verified_session = await chat_sessions.verify_form_token(chat_id, chat_token)
+        context["chat"] = chat_view(verified_session)
+        assistant_answer = await answer_about_transcript(
+            transcript=verified_session["transcript"],
+            history=verified_session["history"],
+            question=cleaned_message,
+        )
+        updated_session = await chat_sessions.record_exchange(
+            chat_id=chat_id,
+            user_message=cleaned_message,
+            assistant_message=assistant_answer,
+            max_user_messages=CHAT_MAX_USER_MESSAGES,
+        )
+        context["result"] = summary_result_from_session(updated_session)
+        context["chat"] = chat_view(updated_session)
+    except SummarizerError as exc:
+        context["chat_error"] = str(exc)
+    except ValueError as exc:
+        if "Limite" in str(exc):
+            context["chat_error"] = (
+                f"Hai raggiunto il limite di {CHAT_MAX_USER_MESSAGES} messaggi."
+            )
+        else:
+            context["chat_error"] = "Messaggio gia inviato o non valido. Riprova."
+    except KeyError:
+        context = await base_index_context(
+            request,
+            error="Sessione chat non valida o scaduta.",
+        )
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        context["chat_error"] = f"Unexpected error: {exc}"
+    context["metrics"] = await metrics_service.snapshot()
+    return templates.TemplateResponse("index.html", context)
+
+
+@app.get("/transcript/{chat_id}.txt")
+async def transcript_download(chat_id: str):
+    session = await chat_sessions.get(chat_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404, detail="Transcript non disponibile o sessione scaduta."
+        )
+    filename = f'transcript-{session["video_id"]}.txt'
+    return PlainTextResponse(
+        content=session["transcript"],
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/api/summarize", response_model=SummarizeApiResponse)
@@ -351,7 +522,7 @@ async def summarize_api(payload: SummarizeApiRequest):
         result["meta"]["cached"],
         result["meta"]["processing_ms"],
     )
-    return result
+    return {"summary": result["summary"], "meta": result["meta"]}
 
 
 @app.get("/api/metrics", response_model=MetricsResponse)

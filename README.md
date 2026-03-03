@@ -4,6 +4,8 @@ Applicazione FastAPI + Jinja che:
 - accetta URL YouTube
 - recupera trascrizione
 - genera riassunto con AI (Ollama o OpenAI)
+- offre una mini-chat sul transcript (max 3 messaggi utente)
+- permette download del transcript in `.txt`
 - espone metriche runtime e dashboard `/stats`
 
 ## Requisiti
@@ -98,6 +100,32 @@ Errori principali:
 - `422`: payload JSON non valido
 - `503`: transcript non disponibile o errore modello locale
 
+Nota: il contratto di `POST /api/summarize` resta invariato (nessun campo chat/transcript aggiuntivo nella risposta pubblica).
+
+## Chat sul transcript (UI web)
+
+Dopo la generazione del riassunto (route HTML `POST /summarize`), la pagina mostra:
+- una chat contestuale al transcript del video
+- limite massimo: `3` messaggi utente
+- storico conversazione nella stessa sessione in-memory
+
+Route HTML:
+- `POST /chat` (form data: `chat_id`, `message`)
+
+Comportamento:
+- se la sessione chat non esiste o e scaduta, viene mostrato errore in pagina
+- al quarto messaggio utente la richiesta viene rifiutata
+
+## Download transcript `.txt` (UI web)
+
+Route:
+- `GET /transcript/{chat_id}.txt`
+
+Comportamento:
+- scarica il transcript in formato testo (`text/plain`) usato per il riassunto
+- filename: `transcript-<video_id>.txt`
+- restituisce `404` se la sessione non esiste o e scaduta
+
 Endpoint metriche:
 
 `GET /api/metrics`
@@ -161,3 +189,9 @@ Dashboard metriche HTML:
 - Chiave: `video_id:mode`
 - TTL: `3600` secondi (1 ora)
 - Invalidazione: lazy alla lettura
+- Payload cache summary: `summary`, `language`, `transcript`
+
+Sessione chat:
+- store in-memory separato
+- TTL: `3600` secondi (1 ora)
+- contiene `chat_id`, metadati video, `summary`, `transcript`, storico chat, contatore messaggi utente

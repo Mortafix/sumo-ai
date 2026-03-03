@@ -12,10 +12,12 @@
         <section class="panel">
             <header class="panel-header">
                 <div>
-                    <div class="brand-title">
-                        <img class="brand-title-logo" src="/static/logo.png" alt="Logo iutub" />
-                        <img class="brand-title-text" src="/static/text_white.png" alt="Logo iutub" />
-                    </div>
+                    <a class="brand-link" href="/" aria-label="Torna alla home di Sumo AI">
+                        <div class="brand-title">
+                            <img class="brand-title-logo" src="/static/logo.png" alt="Logo iutub" />
+                            <img class="brand-title-text" src="/static/text_white.png" alt="Logo iutub" />
+                        </div>
+                    </a>
                     <p class="subtitle">Genera il riassunto di un video YouTube</p>
                 </div>
                 <a class="ghost-link" href="/stats">
@@ -107,13 +109,69 @@
                         </span>
                     </span>
                 </div>
-                <h2 class="summary-title">
-                    <i class="fa-solid fa-file-lines fa-ui" aria-hidden="true"></i>
-                    Riassunto
-                </h2>
                 <div class="summary-card">
+                    <div class="summary-header">
+                        <h2 class="summary-title">
+                            <i class="fa-solid fa-file-lines fa-ui" aria-hidden="true"></i>
+                            Riassunto
+                        </h2>
+                        {% if chat %}
+                        <a class="ghost-link result-action-link" href="/transcript/{{ chat.chat_id }}.txt">
+                            <i class="fa-solid fa-download fa-ui" aria-hidden="true"></i>
+                            <span>Scarica transcript .txt</span>
+                        </a>
+                        {% endif %}
+                    </div>
                     <div class="summary-content">{{ result.summary_html | safe }}</div>
                 </div>
+                {% if chat %}
+                <section class="chat-section" aria-label="Chat sul transcript">
+                    <div class="summary-header">
+                        <h3 class="summary-title">
+                            <i class="fa-solid fa-comments fa-ui" aria-hidden="true"></i>
+                            Chat sul video
+                        </h3>
+                        <p class="chat-counter">Messaggi rimasti: <strong>{{ chat.remaining_messages }}</strong> di {{ chat.max_messages }}</p>
+                    </div>
+                    <div class="chat-history" role="log" aria-live="polite">
+                        {% if chat.history %}
+                        {% for item in chat.history %}
+                        <article class="chat-message chat-message-{{ item.role }}">
+                            <p class="chat-message-role">
+                                <i class="fa-solid {{ 'fa-user' if item.role == 'user' else 'fa-robot' }} fa-ui" aria-hidden="true"></i>
+                                <span>{{ "Tu" if item.role == "user" else "Assistente" }}</span>
+                            </p>
+                            <p class="chat-message-content">{{ item.content }}</p>
+                        </article>
+                        {% endfor %}
+                        {% endif %}
+                    </div>
+                    {% if chat_error %}
+                    <div class="message error chat-error">{{ chat_error }}</div>
+                    {% endif %}
+                    {% if not chat.limit_reached %}
+                    <form action="/chat" method="post" class="chat-form">
+                        <input type="hidden" name="chat_id" value="{{ chat.chat_id }}" />
+                        <input type="hidden" name="chat_token" value="{{ chat.chat_token }}" />
+                        <label for="chat-message">Fai una domanda sul video</label>
+                        <div class="chat-input-wrap">
+                            <input id="chat-message" name="message" type="text" maxlength="600" placeholder="Es. Quali sono i tre punti principali?" required />
+                            <button class="chat-submit-button" type="submit">
+                                <span class="chat-submit-icon" aria-hidden="true">
+                                    <i class="fa-solid fa-paper-plane fa-ui"></i>
+                                </span>
+                                <span class="chat-submit-label">Invia</span>
+                                <span class="chat-submit-spinner" aria-hidden="true">
+                                    <i class="fa-solid fa-spinner"></i>
+                                </span>
+                            </button>
+                        </div>
+                    </form>
+                    {% else %}
+                    <p class="chat-limit-note">Non puoi inviare altri messaggi, limite massimo raggiunto.</p>
+                    {% endif %}
+                </section>
+                {% endif %}
             </article>
             {% endif %}
         </section>
@@ -123,6 +181,10 @@
         const form = document.getElementById("summarize-form");
         const submitButton = document.getElementById("submit-button");
         const buttonLabel = submitButton ? submitButton.querySelector(".button-label") : null;
+        const chatForm = document.querySelector(".chat-form");
+        const chatInput = chatForm ? chatForm.querySelector('input[name="message"]') : null;
+        const chatSubmitButton = chatForm ? chatForm.querySelector(".chat-submit-button") : null;
+        const chatSubmitLabel = chatSubmitButton ? chatSubmitButton.querySelector(".chat-submit-label") : null;
         const urlInput = document.getElementById("url");
         const previewRoot = document.getElementById("url-preview");
         const previewImage = document.getElementById("url-preview-image");
@@ -131,6 +193,7 @@
 
         let previewToken = 0;
         let isSubmitting = false;
+        let isChatSubmitting = false;
 
         const idPattern = /^[a-zA-Z0-9_-]{11}$/;
 
@@ -257,6 +320,21 @@
             buttonLabel.textContent = "Generazione...";
         };
 
+        const applyChatLoadingState = () => {
+            if (isChatSubmitting || !chatForm || !chatSubmitButton || !chatSubmitLabel) {
+                return;
+            }
+
+            isChatSubmitting = true;
+            chatSubmitButton.disabled = true;
+            chatSubmitButton.classList.add("is-loading");
+            chatForm.setAttribute("aria-busy", "true");
+            if (chatInput) {
+                chatInput.readOnly = true;
+            }
+            chatSubmitLabel.textContent = "Invio...";
+        };
+
         if (form) {
             form.addEventListener("submit", (event) => {
                 if (isSubmitting) {
@@ -264,6 +342,16 @@
                     return;
                 }
                 applyLoadingState();
+            });
+        }
+
+        if (chatForm) {
+            chatForm.addEventListener("submit", (event) => {
+                if (isChatSubmitting) {
+                    event.preventDefault();
+                    return;
+                }
+                applyChatLoadingState();
             });
         }
 
@@ -279,10 +367,10 @@
         }
 
         const shouldAutoStart = Boolean(
-            form
-            && urlInput
-            && form.dataset.autoStart === "1"
-            && (urlInput.value || "").trim()
+            form &&
+            urlInput &&
+            form.dataset.autoStart === "1" &&
+            (urlInput.value || "").trim()
         );
         if (shouldAutoStart) {
             window.requestAnimationFrame(() => {
