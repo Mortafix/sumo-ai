@@ -1,4 +1,5 @@
 import html
+import json
 import logging
 import re
 from os import getenv
@@ -10,12 +11,14 @@ from app.services.cache_service import (InMemoryChatSessionStore,
 from app.services.metrics_service import InMemoryMetrics
 from app.services.summarizer_service import (SummarizerError,
                                              answer_about_transcript,
+                                             stream_answer_about_transcript,
+                                             stream_summarize_text,
                                              summarize_text)
 from app.services.transcript_service import (InvalidYouTubeUrlError,
                                              TranscriptError, extract_video_id,
                                              fetch_transcript)
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -25,7 +28,7 @@ MetaPage = Literal["index", "stats"]
 SUMMARY_CACHE_TTL_SECONDS = 3600
 CHAT_MAX_USER_MESSAGES = 3
 CHAT_SESSION_TTL_SECONDS = SUMMARY_CACHE_TTL_SECONDS
-SITE_URL = getenv("SITE_URL").rstrip("/")
+SITE_URL = (getenv("SITE_URL") or "").rstrip("/")
 SITE_NAME = "Sumo AI"
 SITE_LABEL = "sumo"
 DEFAULT_DESCRIPTION = "Genera il riassunto di un video YouTube"
@@ -60,6 +63,12 @@ class SummarizeApiResponse(BaseModel):
     meta: SummarizeMeta
 
 
+class ChatStreamApiRequest(BaseModel):
+    chat_id: str = Field(..., min_length=1)
+    chat_token: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, max_length=600)
+
+
 class MetricsBucketResponse(BaseModel):
     requests_total: int
     success_total: int
@@ -80,6 +89,10 @@ class MetricsPerModeResponse(BaseModel):
 class MetricsResponse(BaseModel):
     since_start: MetricsBucketResponse
     per_mode: MetricsPerModeResponse
+
+
+def ndjson_line(payload: dict) -> str:
+    return f"{json.dumps(payload, ensure_ascii=False)}\n"
 
 
 def normalize_mode(mode: str) -> SummaryMode:
@@ -523,6 +536,343 @@ async def summarize_api(payload: SummarizeApiRequest):
         result["meta"]["processing_ms"],
     )
     return {"summary": result["summary"], "meta": result["meta"]}
+
+
+@app.post("/api/summarize/stream")
+async def summarize_api_stream(payload: SummarizeApiRequest):
+    selected_mode = normalize_mode(payload.mode)
+
+    async def stream():
+        started_at = perf_counter()
+        await metrics_service.record_request(selected_mode)
+        yield ndjson_line({"type": "start"})
+        try:
+            video_id = extract_video_id(payload.url)
+            cache_key = make_key(video_id=video_id, mode=selected_mode)
+            cache_hit = await summary_cache.get(cache_key)
+
+            if cache_hit:
+                summary_text = (cache_hit.get("summary") or "").strip()
+                language = cache_hit.get("language", "sconosciuto")
+                transcript = (cache_hit.get("transcript") or "").strip()
+                if not transcript:
+                    try:
+                        transcript_data = fetch_transcript(video_id)
+                        transcript = transcript_data["text"]
+                        await summary_cache.set(
+                            cache_key,
+                            {
+                                "summary": summary_text,
+                                "language": language,
+                                "transcript": transcript,
+                            },
+                            ttl_seconds=SUMMARY_CACHE_TTL_SECONDS,
+                        )
+                    except TranscriptError as exc:
+                        logger.warning(
+                            "api_summarize_stream cache_hit_missing_transcript video_id=%s mode=%s error=%s",
+                            video_id,
+                            selected_mode,
+                            exc,
+                        )
+                processing_ms = elapsed_ms(started_at)
+                meta = {
+                    "video_id": video_id,
+                    "language": language,
+                    "mode": selected_mode,
+                    "cached": True,
+                    "processing_ms": processing_ms,
+                }
+                await metrics_service.record_success(
+                    mode=selected_mode,
+                    processing_ms=processing_ms,
+                    cached=True,
+                )
+                chat_session = await chat_sessions.create(
+                    {
+                        "video_id": video_id,
+                        "mode": selected_mode,
+                        "language": language,
+                        "summary": summary_text,
+                        "transcript": transcript,
+                        "processing_ms": processing_ms,
+                    },
+                    ttl_seconds=CHAT_SESSION_TTL_SECONDS,
+                )
+                yield ndjson_line(
+                    {
+                        "type": "meta",
+                        "video_id": video_id,
+                        "language": language,
+                        "mode": selected_mode,
+                        "cached": True,
+                    }
+                )
+                if summary_text:
+                    yield ndjson_line({"type": "chunk", "text": summary_text})
+                yield ndjson_line(
+                    {
+                        "type": "done",
+                        "summary": summary_text,
+                        "summary_html": render_summary_html(summary_text),
+                        "meta": meta,
+                        "chat": chat_view(chat_session),
+                    }
+                )
+                return
+
+            transcript_data = fetch_transcript(video_id)
+            yield ndjson_line(
+                {
+                    "type": "meta",
+                    "video_id": video_id,
+                    "language": transcript_data["language"],
+                    "mode": selected_mode,
+                    "cached": False,
+                }
+            )
+
+            chunks: list[str] = []
+            async for chunk in stream_summarize_text(
+                transcript_data["text"], mode=selected_mode
+            ):
+                chunks.append(chunk)
+                yield ndjson_line({"type": "chunk", "text": chunk})
+
+            summary_text = "".join(chunks).strip()
+            if not summary_text:
+                raise SummarizerError("Il modello AI non ha restituito alcun riassunto.")
+
+            await summary_cache.set(
+                cache_key,
+                {
+                    "summary": summary_text,
+                    "language": transcript_data["language"],
+                    "transcript": transcript_data["text"],
+                },
+                ttl_seconds=SUMMARY_CACHE_TTL_SECONDS,
+            )
+            processing_ms = elapsed_ms(started_at)
+            meta = {
+                "video_id": video_id,
+                "language": transcript_data["language"],
+                "mode": selected_mode,
+                "cached": False,
+                "processing_ms": processing_ms,
+            }
+            await metrics_service.record_success(
+                mode=selected_mode,
+                processing_ms=processing_ms,
+                cached=False,
+            )
+            chat_session = await chat_sessions.create(
+                {
+                    "video_id": video_id,
+                    "mode": selected_mode,
+                    "language": transcript_data["language"],
+                    "summary": summary_text,
+                    "transcript": transcript_data["text"],
+                    "processing_ms": processing_ms,
+                },
+                ttl_seconds=CHAT_SESSION_TTL_SECONDS,
+            )
+            yield ndjson_line(
+                {
+                    "type": "done",
+                    "summary": summary_text,
+                    "summary_html": render_summary_html(summary_text),
+                    "meta": meta,
+                    "chat": chat_view(chat_session),
+                }
+            )
+        except InvalidYouTubeUrlError as exc:
+            await metrics_service.record_failure(
+                mode=selected_mode, processing_ms=elapsed_ms(started_at)
+            )
+            logger.warning(
+                "api_summarize_stream invalid_url mode=%s processing_ms=%.2f error=%s",
+                selected_mode,
+                elapsed_ms(started_at),
+                exc,
+            )
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": str(exc),
+                    "status": 400,
+                }
+            )
+        except (TranscriptError, SummarizerError) as exc:
+            await metrics_service.record_failure(
+                mode=selected_mode, processing_ms=elapsed_ms(started_at)
+            )
+            logger.error(
+                "api_summarize_stream service_error mode=%s processing_ms=%.2f error=%s",
+                selected_mode,
+                elapsed_ms(started_at),
+                exc,
+            )
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": str(exc),
+                    "status": 503,
+                }
+            )
+        except Exception:
+            await metrics_service.record_failure(
+                mode=selected_mode, processing_ms=elapsed_ms(started_at)
+            )
+            logger.exception(
+                "api_summarize_stream unexpected_error mode=%s processing_ms=%.2f",
+                selected_mode,
+                elapsed_ms(started_at),
+            )
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": "Unexpected internal error.",
+                    "status": 500,
+                }
+            )
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+
+@app.post("/api/chat/stream")
+async def chat_stream_api(payload: ChatStreamApiRequest):
+    async def stream():
+        cleaned_message = (payload.message or "").strip()
+        yield ndjson_line({"type": "start"})
+
+        if not cleaned_message:
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": "Inserisci un messaggio prima di inviare.",
+                    "status": 400,
+                }
+            )
+            return
+
+        session = await chat_sessions.get(payload.chat_id)
+        if session is None:
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": "Sessione chat non valida o scaduta.",
+                    "status": 404,
+                }
+            )
+            return
+
+        if session["user_messages_count"] >= CHAT_MAX_USER_MESSAGES:
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": f"Hai raggiunto il limite di {CHAT_MAX_USER_MESSAGES} messaggi.",
+                    "status": 429,
+                    "chat": chat_view(session),
+                }
+            )
+            return
+
+        try:
+            verified_session = await chat_sessions.verify_form_token(
+                payload.chat_id, payload.chat_token
+            )
+        except ValueError:
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": "Messaggio gia inviato o non valido. Riprova.",
+                    "status": 409,
+                }
+            )
+            return
+        except KeyError:
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": "Sessione chat non valida o scaduta.",
+                    "status": 404,
+                }
+            )
+            return
+
+        yield ndjson_line({"type": "ack", "chat": chat_view(verified_session)})
+
+        chunks: list[str] = []
+        try:
+            async for chunk in stream_answer_about_transcript(
+                transcript=verified_session["transcript"],
+                history=verified_session["history"],
+                question=cleaned_message,
+            ):
+                chunks.append(chunk)
+                yield ndjson_line({"type": "chunk", "text": chunk})
+
+            assistant_answer = "".join(chunks).strip()
+            if not assistant_answer:
+                raise SummarizerError(
+                    "Il modello AI non ha restituito alcuna risposta utile."
+                )
+
+            updated_session = await chat_sessions.record_exchange(
+                chat_id=payload.chat_id,
+                user_message=cleaned_message,
+                assistant_message=assistant_answer,
+                max_user_messages=CHAT_MAX_USER_MESSAGES,
+            )
+            yield ndjson_line(
+                {
+                    "type": "done",
+                    "answer": assistant_answer,
+                    "chat": chat_view(updated_session),
+                }
+            )
+        except SummarizerError as exc:
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": str(exc),
+                    "status": 503,
+                    "chat": chat_view(verified_session),
+                }
+            )
+        except ValueError as exc:
+            detail = (
+                f"Hai raggiunto il limite di {CHAT_MAX_USER_MESSAGES} messaggi."
+                if "Limite" in str(exc)
+                else "Messaggio gia inviato o non valido. Riprova."
+            )
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": detail,
+                    "status": 429 if "Limite" in str(exc) else 409,
+                }
+            )
+        except KeyError:
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": "Sessione chat non valida o scaduta.",
+                    "status": 404,
+                }
+            )
+        except Exception:
+            logger.exception("api_chat_stream unexpected_error chat_id=%s", payload.chat_id)
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": "Unexpected internal error.",
+                    "status": 500,
+                    "chat": chat_view(verified_session),
+                }
+            )
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
 @app.get("/api/metrics", response_model=MetricsResponse)

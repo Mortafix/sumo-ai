@@ -41,7 +41,7 @@ Esempio:
 
 `http://127.0.0.1:8000/?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ&mode=veloce`
 
-Con `url` nei query params, la pagina viene renderizzata subito (form + preview + bottone) e poi avvia automaticamente il submit verso `POST /summarize` lato client.
+Con `url` nei query params, la pagina viene renderizzata subito (form + preview + bottone) e poi avvia automaticamente il submit lato client in modalita streaming.
 
 ## Variabili ambiente opzionali
 
@@ -102,15 +102,40 @@ Errori principali:
 
 Nota: il contratto di `POST /api/summarize` resta invariato (nessun campo chat/transcript aggiuntivo nella risposta pubblica).
 
+## API Streaming (NDJSON)
+
+Endpoint:
+
+- `POST /api/summarize/stream`
+- `POST /api/chat/stream`
+
+Formato risposta: `application/x-ndjson` (una riga JSON per evento).
+
+Eventi riassunto (`/api/summarize/stream`):
+
+- `start`: inizio elaborazione
+- `meta`: metadati iniziali (`video_id`, `language`, `mode`, `cached`)
+- `chunk`: pezzo di testo del riassunto
+- `done`: risultato finale (`summary`, `summary_html`, `meta`, `chat`)
+- `error`: errore (`detail`, `status`)
+
+Eventi chat (`/api/chat/stream`):
+
+- `start`: inizio elaborazione
+- `ack`: token chat aggiornato (`chat`)
+- `chunk`: pezzo di testo della risposta assistente
+- `done`: risposta finale (`answer`, `chat`)
+- `error`: errore (`detail`, `status`, opzionale `chat`)
+
 ## Chat sul transcript (UI web)
 
-Dopo la generazione del riassunto (route HTML `POST /summarize`), la pagina mostra:
+Dopo la generazione del riassunto, la pagina mostra:
 - una chat contestuale al transcript del video
 - limite massimo: `3` messaggi utente
 - storico conversazione nella stessa sessione in-memory
 
 Route HTML:
-- `POST /chat` (form data: `chat_id`, `message`)
+- `POST /chat` (form data: `chat_id`, `chat_token`, `message`)
 
 Comportamento:
 - se la sessione chat non esiste o e scaduta, viene mostrato errore in pagina

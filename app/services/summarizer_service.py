@@ -1,5 +1,6 @@
+import json
 from os import getenv, path
-from typing import Sequence
+from typing import AsyncIterator, Sequence
 
 from dotenv import load_dotenv
 from httpx import AsyncClient
@@ -7,11 +8,13 @@ from httpx import AsyncClient
 load_dotenv()
 OLLAMA_BASE_URL = getenv("OLLAMA_BASE_URL")
 OLLAMA_MODEL = getenv("OLLAMA_MODEL")
-OPENAI_BASE_URL = getenv("OPENAI_BASE_URL").rstrip("/")
+OPENAI_BASE_URL = (getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip(
+    "/"
+)
 OPENAI_API_KEY = getenv("OPENAI_API_KEY")
 OPENAI_MODEL = getenv("OPENAI_MODEL")
-AI_PROVIDER = getenv("AI_PROVIDER").strip().lower()
-PROMPTS_FOLDER = getenv("FOLDER")
+AI_PROVIDER = (getenv("AI_PROVIDER") or "").strip().lower()
+PROMPTS_FOLDER = getenv("FOLDER") or "."
 
 
 class SummarizerError(Exception):
@@ -125,6 +128,34 @@ async def _generate_with_ollama(prompt: str, empty_text_error: str) -> str:
     return generated_text
 
 
+async def _stream_with_ollama(prompt: str) -> AsyncIterator[str]:
+    payload = {
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": True,
+        "options": {"temperature": 0.2},
+    }
+    try:
+        async with AsyncClient(timeout=180.0) as client:
+            async with client.stream(
+                "POST",
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json=payload,
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    payload_line = json.loads(line)
+                    chunk = payload_line.get("response")
+                    if isinstance(chunk, str) and chunk:
+                        yield chunk
+    except Exception as exc:
+        raise SummarizerError(
+            "Modello AI locale non trovato o non raggiungibile."
+        ) from exc
+
+
 async def _generate_with_openai(prompt: str, empty_text_error: str) -> str:
     if not OPENAI_API_KEY:
         raise SummarizerError("OPENAI_API_KEY non impostata.")
@@ -152,6 +183,97 @@ async def _generate_with_openai(prompt: str, empty_text_error: str) -> str:
     return generated_text
 
 
+def _extract_openai_stream_delta(event_payload: dict) -> str:
+    delta = event_payload.get("delta")
+    if isinstance(delta, str) and delta:
+        return delta
+
+    item = event_payload.get("item")
+    if not isinstance(item, dict):
+        return ""
+
+    content = item.get("content")
+    content_index = event_payload.get("content_index")
+    if (
+        isinstance(content, list)
+        and isinstance(content_index, int)
+        and 0 <= content_index < len(content)
+    ):
+        content_item = content[content_index]
+        if (
+            isinstance(content_item, dict)
+            and content_item.get("type") == "output_text"
+            and isinstance(content_item.get("text"), str)
+            and content_item["text"]
+        ):
+            return content_item["text"]
+    return ""
+
+
+def _extract_openai_stream_error(event_payload: dict) -> str:
+    error_payload = event_payload.get("error")
+    if isinstance(error_payload, dict):
+        message = error_payload.get("message")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+
+    message = event_payload.get("message")
+    if isinstance(message, str) and message.strip():
+        return message.strip()
+    return "Errore durante lo streaming della risposta OpenAI."
+
+
+async def _stream_with_openai(prompt: str) -> AsyncIterator[str]:
+    if not OPENAI_API_KEY:
+        raise SummarizerError("OPENAI_API_KEY non impostata.")
+
+    payload = {"model": OPENAI_MODEL, "input": prompt, "stream": True}
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with AsyncClient(timeout=180.0) as client:
+            async with client.stream(
+                "POST",
+                f"{OPENAI_BASE_URL}/responses",
+                json=payload,
+                headers=headers,
+            ) as response:
+                response.raise_for_status()
+                async for raw_line in response.aiter_lines():
+                    line = (raw_line or "").strip()
+                    if not line or line.startswith(":"):
+                        continue
+                    if line.startswith("event:"):
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+
+                    data = line[5:].strip()
+                    if not data:
+                        continue
+                    if data == "[DONE]":
+                        break
+
+                    event_payload = json.loads(data)
+                    event_type = event_payload.get("type")
+                    if event_type in {"response.output_text.delta", "output_text.delta"}:
+                        chunk = _extract_openai_stream_delta(event_payload)
+                        if chunk:
+                            yield chunk
+                    elif event_type in {"response.error", "error"}:
+                        raise SummarizerError(
+                            _extract_openai_stream_error(event_payload)
+                        )
+    except SummarizerError:
+        raise
+    except Exception as exc:
+        raise SummarizerError(
+            "API OpenAI non raggiungibile o configurazione non valida."
+        ) from exc
+
+
 async def _generate_text(prompt: str, empty_text_error: str) -> str:
     if AI_PROVIDER not in {"ollama", "openai"}:
         raise SummarizerError(
@@ -162,12 +284,44 @@ async def _generate_text(prompt: str, empty_text_error: str) -> str:
     return await _generate_with_ollama(prompt, empty_text_error)
 
 
+async def _stream_text(prompt: str, empty_text_error: str) -> AsyncIterator[str]:
+    if AI_PROVIDER not in {"ollama", "openai"}:
+        raise SummarizerError(
+            f"AI_PROVIDER non supportato: {AI_PROVIDER}. Usa 'ollama' o 'openai'."
+        )
+
+    stream_source: AsyncIterator[str]
+    if AI_PROVIDER == "openai":
+        stream_source = _stream_with_openai(prompt)
+    else:
+        stream_source = _stream_with_ollama(prompt)
+
+    has_chunks = False
+    async for chunk in stream_source:
+        if not chunk:
+            continue
+        has_chunks = True
+        yield chunk
+
+    if not has_chunks:
+        raise SummarizerError(empty_text_error)
+
+
 async def summarize_text(text: str, mode: str) -> str:
     prompt = _build_prompt(text, mode)
     return await _generate_text(
         prompt=prompt,
         empty_text_error="Il modello AI non ha restituito alcun riassunto.",
     )
+
+
+async def stream_summarize_text(text: str, mode: str) -> AsyncIterator[str]:
+    prompt = _build_prompt(text, mode)
+    async for chunk in _stream_text(
+        prompt=prompt,
+        empty_text_error="Il modello AI non ha restituito alcun riassunto.",
+    ):
+        yield chunk
 
 
 async def answer_about_transcript(
@@ -184,3 +338,25 @@ async def answer_about_transcript(
         prompt=prompt,
         empty_text_error="Il modello AI non ha restituito alcuna risposta utile.",
     )
+
+
+async def stream_answer_about_transcript(
+    transcript: str, history: Sequence[dict[str, str]], question: str
+) -> AsyncIterator[str]:
+    if not (transcript or "").strip():
+        yield (
+            "Non ho un transcript disponibile, quindi non posso rispondere "
+            "in modo affidabile."
+        )
+        return
+
+    prompt = _build_chat_prompt(
+        transcript=transcript,
+        history=history,
+        question=question,
+    )
+    async for chunk in _stream_text(
+        prompt=prompt,
+        empty_text_error="Il modello AI non ha restituito alcuna risposta utile.",
+    ):
+        yield chunk

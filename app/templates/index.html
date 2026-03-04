@@ -88,6 +88,7 @@
                     </span>
                 </button>
             </form>
+            <div id="stream-summary-error" class="message error" hidden></div>
             {% if error %}
             <div class="message error">{{ error }}</div>
             {% endif %}
@@ -181,15 +182,19 @@
         const form = document.getElementById("summarize-form");
         const submitButton = document.getElementById("submit-button");
         const buttonLabel = submitButton ? submitButton.querySelector(".button-label") : null;
-        const chatForm = document.querySelector(".chat-form");
-        const chatInput = chatForm ? chatForm.querySelector('input[name="message"]') : null;
-        const chatSubmitButton = chatForm ? chatForm.querySelector(".chat-submit-button") : null;
-        const chatSubmitLabel = chatSubmitButton ? chatSubmitButton.querySelector(".chat-submit-label") : null;
+        const streamSummaryError = document.getElementById("stream-summary-error");
         const urlInput = document.getElementById("url");
+        const panel = document.querySelector(".panel");
         const previewRoot = document.getElementById("url-preview");
         const previewImage = document.getElementById("url-preview-image");
         const previewTitle = document.getElementById("url-preview-title");
         const previewChannel = document.getElementById("url-preview-channel");
+
+        const supportsStreaming = Boolean(
+            window.fetch &&
+            window.ReadableStream &&
+            window.TextDecoder
+        );
 
         let previewToken = 0;
         let isSubmitting = false;
@@ -312,7 +317,6 @@
             if (isSubmitting || !form || !submitButton || !buttonLabel) {
                 return;
             }
-
             isSubmitting = true;
             submitButton.disabled = true;
             submitButton.classList.add("is-loading");
@@ -320,11 +324,25 @@
             buttonLabel.textContent = "Generazione...";
         };
 
-        const applyChatLoadingState = () => {
-            if (isChatSubmitting || !chatForm || !chatSubmitButton || !chatSubmitLabel) {
+        const resetLoadingState = () => {
+            if (!form || !submitButton || !buttonLabel) {
                 return;
             }
+            isSubmitting = false;
+            submitButton.disabled = false;
+            submitButton.classList.remove("is-loading");
+            form.removeAttribute("aria-busy");
+            buttonLabel.textContent = "Genera riassunto";
+        };
 
+        const applyChatLoadingState = (chatBindings) => {
+            if (!chatBindings || isChatSubmitting) {
+                return;
+            }
+            const { form: chatForm, submitButton: chatSubmitButton, submitLabel: chatSubmitLabel, input: chatInput } = chatBindings;
+            if (!chatForm || !chatSubmitButton || !chatSubmitLabel) {
+                return;
+            }
             isChatSubmitting = true;
             chatSubmitButton.disabled = true;
             chatSubmitButton.classList.add("is-loading");
@@ -335,25 +353,469 @@
             chatSubmitLabel.textContent = "Invio...";
         };
 
+        const resetChatLoadingState = (chatBindings) => {
+            if (!chatBindings) {
+                return;
+            }
+            const { form: chatForm, submitButton: chatSubmitButton, submitLabel: chatSubmitLabel, input: chatInput } = chatBindings;
+            if (!chatForm || !chatSubmitButton || !chatSubmitLabel) {
+                return;
+            }
+            isChatSubmitting = false;
+            chatSubmitButton.disabled = false;
+            chatSubmitButton.classList.remove("is-loading");
+            chatForm.removeAttribute("aria-busy");
+            if (chatInput) {
+                chatInput.readOnly = false;
+            }
+            chatSubmitLabel.textContent = "Invia";
+        };
+
+        const consumeNdjson = async (response, onEvent) => {
+            if (!response.body) {
+                throw new Error("Streaming non supportato dalla risposta.");
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                let lineBreakIndex = buffer.indexOf("\n");
+                while (lineBreakIndex >= 0) {
+                    const line = buffer.slice(0, lineBreakIndex).trim();
+                    buffer = buffer.slice(lineBreakIndex + 1);
+                    if (line) {
+                        onEvent(JSON.parse(line));
+                    }
+                    lineBreakIndex = buffer.indexOf("\n");
+                }
+            }
+
+            const pending = buffer.trim();
+            if (pending) {
+                onEvent(JSON.parse(pending));
+            }
+        };
+
+        const removeOldResults = () => {
+            if (!panel) {
+                return;
+            }
+            panel.querySelectorAll("article.result").forEach((node) => {
+                node.remove();
+            });
+        };
+
+        const buildChatBindings = (chatSection) => {
+            if (!chatSection) {
+                return null;
+            }
+            const chatForm = chatSection.querySelector(".chat-form");
+            const chatInput = chatForm ? chatForm.querySelector('input[name="message"]') : null;
+            const chatSubmitButton = chatForm ? chatForm.querySelector(".chat-submit-button") : null;
+            const chatSubmitLabel = chatSubmitButton ? chatSubmitButton.querySelector(".chat-submit-label") : null;
+            return {
+                section: chatSection,
+                form: chatForm,
+                input: chatInput,
+                submitButton: chatSubmitButton,
+                submitLabel: chatSubmitLabel,
+                history: chatSection.querySelector(".chat-history"),
+                error: chatSection.querySelector(".chat-error"),
+                counter: chatSection.querySelector(".chat-counter"),
+                limitNote: chatSection.querySelector(".chat-limit-note"),
+                chatIdInput: chatForm ? chatForm.querySelector('input[name="chat_id"]') : null,
+                chatTokenInput: chatForm ? chatForm.querySelector('input[name="chat_token"]') : null,
+            };
+        };
+
+        const setChatError = (chatBindings, message) => {
+            if (!chatBindings || !chatBindings.error) {
+                return;
+            }
+            chatBindings.error.textContent = message || "";
+            chatBindings.error.hidden = !message;
+        };
+
+        const setChatCounter = (chatBindings, remaining, maxMessages) => {
+            if (!chatBindings || !chatBindings.counter) {
+                return;
+            }
+            chatBindings.counter.innerHTML = `Messaggi rimasti: <strong>${remaining}</strong> di ${maxMessages}`;
+        };
+
+        const applyChatSession = (chatBindings, chat) => {
+            if (!chatBindings || !chat) {
+                return;
+            }
+            if (chatBindings.chatIdInput) {
+                chatBindings.chatIdInput.value = chat.chat_id || "";
+            }
+            if (chatBindings.chatTokenInput) {
+                chatBindings.chatTokenInput.value = chat.chat_token || "";
+            }
+            setChatCounter(chatBindings, chat.remaining_messages, chat.max_messages);
+
+            if (chatBindings.form) {
+                chatBindings.form.hidden = Boolean(chat.limit_reached);
+            }
+            if (chatBindings.limitNote) {
+                chatBindings.limitNote.hidden = !chat.limit_reached;
+            }
+        };
+
+        const appendChatMessage = (chatBindings, role, content) => {
+            if (!chatBindings || !chatBindings.history) {
+                return null;
+            }
+            const article = document.createElement("article");
+            article.className = `chat-message chat-message-${role}`;
+            const label = role === "user" ? "Tu" : "Assistente";
+            const icon = role === "user" ? "fa-user" : "fa-robot";
+            article.innerHTML = `
+                <p class="chat-message-role">
+                    <i class="fa-solid ${icon} fa-ui" aria-hidden="true"></i>
+                    <span>${label}</span>
+                </p>
+                <p class="chat-message-content"></p>
+            `;
+            const contentNode = article.querySelector(".chat-message-content");
+            if (contentNode) {
+                contentNode.textContent = content || "";
+            }
+            chatBindings.history.appendChild(article);
+            chatBindings.history.scrollTop = chatBindings.history.scrollHeight;
+            return contentNode;
+        };
+
+        const attachChatStreamHandler = (chatBindings) => {
+            if (!chatBindings || !chatBindings.form || chatBindings.form.dataset.streamBound === "1") {
+                return;
+            }
+            chatBindings.form.dataset.streamBound = "1";
+            chatBindings.form.addEventListener("submit", async (event) => {
+                if (!supportsStreaming) {
+                    if (isChatSubmitting) {
+                        event.preventDefault();
+                        return;
+                    }
+                    applyChatLoadingState(chatBindings);
+                    return;
+                }
+
+                event.preventDefault();
+                if (isChatSubmitting) {
+                    return;
+                }
+                const userMessage = (chatBindings.input?.value || "").trim();
+                if (!userMessage) {
+                    setChatError(chatBindings, "Inserisci un messaggio prima di inviare.");
+                    return;
+                }
+
+                applyChatLoadingState(chatBindings);
+                setChatError(chatBindings, "");
+                appendChatMessage(chatBindings, "user", userMessage);
+                let assistantContent = null;
+                if (chatBindings.input) {
+                    chatBindings.input.value = "";
+                }
+
+                let assistantText = "";
+                try {
+                    const response = await fetch("/api/chat/stream", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Accept": "application/x-ndjson",
+                        },
+                        body: JSON.stringify({
+                            chat_id: chatBindings.chatIdInput?.value || "",
+                            chat_token: chatBindings.chatTokenInput?.value || "",
+                            message: userMessage,
+                        }),
+                    });
+
+                    await consumeNdjson(response, (eventPayload) => {
+                        if (!eventPayload || typeof eventPayload !== "object") {
+                            return;
+                        }
+                        if (eventPayload.type === "ack" && eventPayload.chat) {
+                            applyChatSession(chatBindings, eventPayload.chat);
+                        }
+                        if (eventPayload.type === "chunk") {
+                            assistantText += eventPayload.text || "";
+                            if (!assistantContent) {
+                                assistantContent = appendChatMessage(chatBindings, "assistant", "");
+                            }
+                            if (assistantContent) {
+                                assistantContent.textContent = assistantText;
+                            }
+                        }
+                        if (eventPayload.type === "done") {
+                            assistantText = eventPayload.answer || assistantText;
+                            if (!assistantContent && assistantText) {
+                                assistantContent = appendChatMessage(chatBindings, "assistant", "");
+                            }
+                            if (assistantContent) {
+                                assistantContent.textContent = assistantText;
+                            }
+                            if (eventPayload.chat) {
+                                applyChatSession(chatBindings, eventPayload.chat);
+                            }
+                        }
+                        if (eventPayload.type === "error") {
+                            setChatError(chatBindings, eventPayload.detail || "Errore durante la chat.");
+                            if (eventPayload.chat) {
+                                applyChatSession(chatBindings, eventPayload.chat);
+                            }
+                        }
+                    });
+                } catch (_err) {
+                    setChatError(chatBindings, "Errore di rete durante la chat in streaming.");
+                } finally {
+                    resetChatLoadingState(chatBindings);
+                }
+            });
+        };
+
+        const buildStreamingResultUI = () => {
+            if (!panel) {
+                return null;
+            }
+
+            removeOldResults();
+
+            const root = document.createElement("article");
+            root.className = "result";
+            root.innerHTML = `
+                <div class="meta-chips" aria-label="Meta riassunto">
+                    <span class="meta-chip">
+                        <i class="fa-solid fa-language fa-ui" aria-hidden="true"></i>
+                        <span class="meta-text">
+                            <span class="meta-label">Lingua</span>
+                            <span class="meta-value" data-role="language">-</span>
+                        </span>
+                    </span>
+                    <span class="meta-chip">
+                        <i class="fa-solid fa-clock fa-ui" aria-hidden="true"></i>
+                        <span class="meta-text">
+                            <span class="meta-label">Latenza</span>
+                            <span class="meta-value" data-role="latency">-</span>
+                        </span>
+                    </span>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-header">
+                        <h2 class="summary-title">
+                            <i class="fa-solid fa-file-lines fa-ui" aria-hidden="true"></i>
+                            Riassunto
+                        </h2>
+                        <a class="ghost-link result-action-link" data-role="download-link" hidden>
+                            <i class="fa-solid fa-download fa-ui" aria-hidden="true"></i>
+                            <span>Scarica transcript .txt</span>
+                        </a>
+                    </div>
+                    <div class="summary-content" data-role="summary-content"></div>
+                </div>
+                <section class="chat-section" aria-label="Chat sul transcript" hidden>
+                    <div class="summary-header">
+                        <h3 class="summary-title">
+                            <i class="fa-solid fa-comments fa-ui" aria-hidden="true"></i>
+                            Chat sul video
+                        </h3>
+                        <p class="chat-counter">Messaggi rimasti: <strong>0</strong> di 0</p>
+                    </div>
+                    <div class="chat-history" role="log" aria-live="polite"></div>
+                    <div class="message error chat-error" hidden></div>
+                    <form action="/chat" method="post" class="chat-form">
+                        <input type="hidden" name="chat_id" value="" />
+                        <input type="hidden" name="chat_token" value="" />
+                        <label for="chat-message-stream">Fai una domanda sul video</label>
+                        <div class="chat-input-wrap">
+                            <input id="chat-message-stream" name="message" type="text" maxlength="600" placeholder="Es. Quali sono i tre punti principali?" required />
+                            <button class="chat-submit-button" type="submit">
+                                <span class="chat-submit-icon" aria-hidden="true">
+                                    <i class="fa-solid fa-paper-plane fa-ui"></i>
+                                </span>
+                                <span class="chat-submit-label">Invia</span>
+                                <span class="chat-submit-spinner" aria-hidden="true">
+                                    <i class="fa-solid fa-spinner"></i>
+                                </span>
+                            </button>
+                        </div>
+                    </form>
+                    <p class="chat-limit-note" hidden>Non puoi inviare altri messaggi, limite massimo raggiunto.</p>
+                </section>
+            `;
+            panel.appendChild(root);
+            const chatBindings = buildChatBindings(root.querySelector(".chat-section"));
+            attachChatStreamHandler(chatBindings);
+
+            return {
+                root,
+                language: root.querySelector('[data-role="language"]'),
+                latency: root.querySelector('[data-role="latency"]'),
+                summaryContent: root.querySelector('[data-role="summary-content"]'),
+                downloadLink: root.querySelector('[data-role="download-link"]'),
+                chatSection: root.querySelector(".chat-section"),
+                chatBindings,
+            };
+        };
+
+        const setStreamSummaryError = (message) => {
+            if (!streamSummaryError) {
+                return;
+            }
+            streamSummaryError.textContent = message || "";
+            streamSummaryError.hidden = !message;
+        };
+
+        const getSelectedMode = () => {
+            if (!form) {
+                return "veloce";
+            }
+            const selected = form.querySelector('input[name="mode"]:checked');
+            return selected ? selected.value : "veloce";
+        };
+
         if (form) {
-            form.addEventListener("submit", (event) => {
+            form.addEventListener("submit", async (event) => {
+                if (!supportsStreaming) {
+                    if (isSubmitting) {
+                        event.preventDefault();
+                        return;
+                    }
+                    applyLoadingState();
+                    return;
+                }
+
+                event.preventDefault();
                 if (isSubmitting) {
-                    event.preventDefault();
                     return;
                 }
                 applyLoadingState();
+                setStreamSummaryError("");
+                removeOldResults();
+
+                const payload = {
+                    url: (urlInput?.value || "").trim(),
+                    mode: getSelectedMode(),
+                };
+
+                let streamingText = "";
+                let streamUI = null;
+                let lastMeta = null;
+
+                const ensureStreamUI = () => {
+                    if (streamUI) {
+                        return streamUI;
+                    }
+                    streamUI = buildStreamingResultUI();
+                    if (!streamUI) {
+                        return null;
+                    }
+                    if (streamUI.chatSection) {
+                        streamUI.chatSection.hidden = true;
+                    }
+                    if (streamUI.downloadLink) {
+                        streamUI.downloadLink.hidden = true;
+                    }
+                    if (lastMeta && streamUI.language) {
+                        streamUI.language.textContent = lastMeta.language || "-";
+                    }
+                    return streamUI;
+                };
+
+                try {
+                    const response = await fetch("/api/summarize/stream", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Accept": "application/x-ndjson",
+                        },
+                        body: JSON.stringify(payload),
+                    });
+
+                    await consumeNdjson(response, (eventPayload) => {
+                        if (!eventPayload || typeof eventPayload !== "object") {
+                            return;
+                        }
+                        if (eventPayload.type === "meta") {
+                            lastMeta = eventPayload;
+                            if (streamUI && streamUI.language) {
+                                streamUI.language.textContent = eventPayload.language || "-";
+                            }
+                        }
+                        if (eventPayload.type === "chunk") {
+                            const activeUI = ensureStreamUI();
+                            if (!activeUI) {
+                                return;
+                            }
+                            streamingText += eventPayload.text || "";
+                            if (activeUI.summaryContent) {
+                                activeUI.summaryContent.textContent = streamingText;
+                            }
+                        }
+                        if (eventPayload.type === "done") {
+                            const hasSummaryContent = Boolean(
+                                (typeof eventPayload.summary === "string" && eventPayload.summary) ||
+                                (typeof eventPayload.summary_html === "string" && eventPayload.summary_html) ||
+                                streamingText
+                            );
+                            const activeUI = streamUI || (hasSummaryContent ? ensureStreamUI() : null);
+                            if (!activeUI) {
+                                return;
+                            }
+                            const meta = eventPayload.meta || lastMeta || {};
+                            if (activeUI.language) {
+                                activeUI.language.textContent = meta.language || activeUI.language.textContent || "-";
+                            }
+                            if (activeUI.latency) {
+                                const latencyValue = Number(meta.processing_ms);
+                                activeUI.latency.textContent = Number.isFinite(latencyValue)
+                                    ? `${(latencyValue / 1000).toFixed(2)} s`
+                                    : "-";
+                            }
+                            if (activeUI.summaryContent) {
+                                if (typeof eventPayload.summary_html === "string" && eventPayload.summary_html) {
+                                    activeUI.summaryContent.innerHTML = eventPayload.summary_html;
+                                } else {
+                                    activeUI.summaryContent.textContent = eventPayload.summary || streamingText;
+                                }
+                            }
+                            if (eventPayload.chat) {
+                                if (activeUI.chatSection) {
+                                    activeUI.chatSection.hidden = false;
+                                }
+                                applyChatSession(activeUI.chatBindings, eventPayload.chat);
+                                if (activeUI.downloadLink) {
+                                    activeUI.downloadLink.href = `/transcript/${eventPayload.chat.chat_id}.txt`;
+                                    activeUI.downloadLink.hidden = false;
+                                }
+                            }
+                        }
+                        if (eventPayload.type === "error") {
+                            setStreamSummaryError(eventPayload.detail || "Errore durante il riassunto.");
+                        }
+                    });
+                } catch (_err) {
+                    setStreamSummaryError("Errore di rete durante il riassunto in streaming.");
+                } finally {
+                    resetLoadingState();
+                }
             });
         }
 
-        if (chatForm) {
-            chatForm.addEventListener("submit", (event) => {
-                if (isChatSubmitting) {
-                    event.preventDefault();
-                    return;
-                }
-                applyChatLoadingState();
-            });
-        }
+        const serverRenderedChatBindings = buildChatBindings(document.querySelector(".chat-section"));
+        attachChatStreamHandler(serverRenderedChatBindings);
 
         if (urlInput) {
             const debouncedUpdate = debounce(updatePreview, 220);
@@ -362,7 +824,6 @@
             urlInput.addEventListener("paste", () => {
                 window.setTimeout(updatePreview, 0);
             });
-
             updatePreview();
         }
 
