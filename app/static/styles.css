@@ -113,6 +113,53 @@ h1 {
     font-weight: 600;
 }
 
+.ghost-button {
+    appearance: none;
+    cursor: pointer;
+    font: inherit;
+}
+
+.result-action-link.ghost-button {
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.22s ease, background 0.22s ease;
+}
+
+.result-action-link.ghost-button:active {
+    transform: translateY(1px) scale(0.985);
+}
+
+.result-action-link.ghost-button.is-busy {
+    opacity: 0.88;
+    cursor: wait;
+}
+
+.result-action-link.ghost-button.is-success {
+    border-color: rgba(92, 240, 176, 0.65);
+    background: linear-gradient(180deg, rgba(46, 168, 113, 0.24), rgba(46, 168, 113, 0.14));
+    box-shadow: 0 0 0 2px rgba(92, 240, 176, 0.22);
+    animation: copy-pop 260ms ease;
+}
+
+.result-action-link.ghost-button.is-error {
+    border-color: rgba(255, 145, 173, 0.62);
+    background: linear-gradient(180deg, rgba(223, 78, 118, 0.21), rgba(223, 78, 118, 0.14));
+    box-shadow: 0 0 0 2px rgba(255, 145, 173, 0.2);
+    animation: copy-pop 260ms ease;
+}
+
+@keyframes copy-pop {
+    0% {
+        transform: scale(1);
+    }
+
+    40% {
+        transform: scale(1.03);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
 .ghost-link:hover {
     border-color: rgba(255, 255, 255, 0.55);
     background: rgba(255, 255, 255, 0.14);
@@ -458,6 +505,13 @@ input[type="url"]:focus {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+}
+
+.summary-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .summary-card {

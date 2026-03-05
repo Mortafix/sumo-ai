@@ -116,12 +116,18 @@
                             <i class="fa-solid fa-file-lines fa-ui" aria-hidden="true"></i>
                             Riassunto
                         </h2>
-                        {% if chat %}
-                        <a class="ghost-link result-action-link" href="/transcript/{{ chat.chat_id }}.txt">
-                            <i class="fa-solid fa-download fa-ui" aria-hidden="true"></i>
-                            <span>Scarica transcript .txt</span>
-                        </a>
-                        {% endif %}
+                        <div class="summary-actions">
+                            <button class="ghost-link ghost-button result-action-link" type="button" data-copy-summary>
+                                <i class="fa-solid fa-copy fa-ui" data-role="copy-icon" aria-hidden="true"></i>
+                                <span data-role="copy-label">Copia riassunto</span>
+                            </button>
+                            {% if chat %}
+                            <a class="ghost-link result-action-link" href="/transcript/{{ chat.chat_id }}.txt">
+                                <i class="fa-solid fa-download fa-ui" aria-hidden="true"></i>
+                                <span>Scarica transcript .txt</span>
+                            </a>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="summary-content">{{ result.summary_html | safe }}</div>
                 </div>
@@ -618,10 +624,16 @@
                             <i class="fa-solid fa-file-lines fa-ui" aria-hidden="true"></i>
                             Riassunto
                         </h2>
-                        <a class="ghost-link result-action-link" data-role="download-link" hidden>
-                            <i class="fa-solid fa-download fa-ui" aria-hidden="true"></i>
-                            <span>Scarica transcript .txt</span>
-                        </a>
+                        <div class="summary-actions">
+                            <button class="ghost-link ghost-button result-action-link" type="button" data-copy-summary>
+                                <i class="fa-solid fa-copy fa-ui" data-role="copy-icon" aria-hidden="true"></i>
+                                <span data-role="copy-label">Copia riassunto</span>
+                            </button>
+                            <a class="ghost-link result-action-link" data-role="download-link" hidden>
+                                <i class="fa-solid fa-download fa-ui" aria-hidden="true"></i>
+                                <span>Scarica transcript .txt</span>
+                            </a>
+                        </div>
                     </div>
                     <div class="summary-content" data-role="summary-content"></div>
                 </div>
@@ -658,6 +670,7 @@
             panel.appendChild(root);
             const chatBindings = buildChatBindings(root.querySelector(".chat-section"));
             attachChatStreamHandler(chatBindings);
+            bindCopyButtons(root);
 
             return {
                 root,
@@ -676,6 +689,177 @@
             }
             streamSummaryError.textContent = message || "";
             streamSummaryError.hidden = !message;
+        };
+
+        const copyFeedbackTimers = new WeakMap();
+
+        const setCopyButtonLabel = (button, label) => {
+            const labelNode = button ? button.querySelector('[data-role="copy-label"]') : null;
+            if (!labelNode) {
+                return;
+            }
+            labelNode.textContent = label;
+        };
+
+        const setCopyButtonIcon = (button, iconClass, { spin = false } = {}) => {
+            const iconNode = button ? button.querySelector('[data-role="copy-icon"]') : null;
+            if (!iconNode) {
+                return;
+            }
+            iconNode.className = `fa-solid ${iconClass} fa-ui`;
+            if (spin) {
+                iconNode.classList.add("fa-spin");
+            }
+        };
+
+        const resetCopyButtonState = (button) => {
+            if (!button) {
+                return;
+            }
+            button.classList.remove("is-busy", "is-success", "is-error");
+            button.disabled = false;
+            setCopyButtonIcon(button, "fa-copy");
+            setCopyButtonLabel(button, "Copia riassunto");
+        };
+
+        const setCopyButtonState = (button, state) => {
+            if (!button) {
+                return;
+            }
+            button.classList.remove("is-busy", "is-success", "is-error");
+
+            if (state === "busy") {
+                button.classList.add("is-busy");
+                button.disabled = true;
+                setCopyButtonIcon(button, "fa-spinner", { spin: true });
+                setCopyButtonLabel(button, "Copio...");
+                return;
+            }
+
+            button.disabled = false;
+            if (state === "success") {
+                button.classList.add("is-success");
+                setCopyButtonIcon(button, "fa-check");
+                setCopyButtonLabel(button, "Copiato");
+                return;
+            }
+            if (state === "empty") {
+                button.classList.add("is-error");
+                setCopyButtonIcon(button, "fa-circle-info");
+                setCopyButtonLabel(button, "Niente da copiare");
+                return;
+            }
+            if (state === "error") {
+                button.classList.add("is-error");
+                setCopyButtonIcon(button, "fa-triangle-exclamation");
+                setCopyButtonLabel(button, "Errore copia");
+            }
+        };
+
+        const scheduleCopyButtonReset = (button) => {
+            if (!button) {
+                return;
+            }
+            const activeTimer = copyFeedbackTimers.get(button);
+            if (activeTimer) {
+                window.clearTimeout(activeTimer);
+            }
+            const timerId = window.setTimeout(() => {
+                resetCopyButtonState(button);
+            }, 1900);
+            copyFeedbackTimers.set(button, timerId);
+        };
+
+        const fallbackCopyText = (text) => {
+            const textarea = document.createElement("textarea");
+            textarea.value = text;
+            textarea.setAttribute("readonly", "readonly");
+            textarea.style.position = "fixed";
+            textarea.style.opacity = "0";
+            document.body.appendChild(textarea);
+            textarea.select();
+            const copied = document.execCommand("copy");
+            document.body.removeChild(textarea);
+            return copied;
+        };
+
+        const copySummaryFromButton = async (button) => {
+            if (!button) {
+                return;
+            }
+            setCopyButtonState(button, "busy");
+
+            const summaryCard = button.closest(".summary-card");
+            const summaryContent = summaryCard ?
+                summaryCard.querySelector(".summary-content") :
+                null;
+            if (!summaryContent) {
+                setCopyButtonState(button, "empty");
+                scheduleCopyButtonReset(button);
+                return;
+            }
+
+            const summaryHtml = (summaryContent.innerHTML || "").trim();
+            const summaryText = (
+                summaryContent.innerText ||
+                summaryContent.textContent ||
+                ""
+            ).trim();
+
+            if (!summaryHtml && !summaryText) {
+                setCopyButtonState(button, "empty");
+                scheduleCopyButtonReset(button);
+                return;
+            }
+
+            let copied = false;
+            try {
+                if (navigator.clipboard && window.ClipboardItem && summaryHtml) {
+                    try {
+                        const clipboardItem = new ClipboardItem({
+                            "text/html": new Blob([summaryHtml], { type: "text/html" }),
+                            "text/plain": new Blob([summaryText], { type: "text/plain" }),
+                        });
+                        await navigator.clipboard.write([clipboardItem]);
+                        copied = true;
+                    } catch (_htmlCopyErr) {
+                        copied = false;
+                    }
+                }
+
+                if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(summaryText);
+                    copied = true;
+                }
+            } catch (_clipboardErr) {
+                copied = false;
+            }
+
+            if (!copied) {
+                try {
+                    copied = fallbackCopyText(summaryText);
+                } catch (_fallbackErr) {
+                    copied = false;
+                }
+            }
+
+            setCopyButtonState(button, copied ? "success" : "error");
+            scheduleCopyButtonReset(button);
+        };
+
+        const bindCopyButtons = (scope = document) => {
+            if (!scope || !scope.querySelectorAll) {
+                return;
+            }
+            scope.querySelectorAll("[data-copy-summary]").forEach((button) => {
+                if (button.dataset.copyBound === "1") {
+                    return;
+                }
+                button.dataset.copyBound = "1";
+                button.addEventListener("click", () => {
+                    copySummaryFromButton(button);
+                });
+            });
         };
 
         const getSelectedMode = () => {
@@ -780,9 +964,9 @@
                             }
                             if (activeUI.latency) {
                                 const latencyValue = Number(meta.processing_ms);
-                                activeUI.latency.textContent = Number.isFinite(latencyValue)
-                                    ? `${(latencyValue / 1000).toFixed(2)} s`
-                                    : "-";
+                                activeUI.latency.textContent = Number.isFinite(latencyValue) ?
+                                    `${(latencyValue / 1000).toFixed(2)} s` :
+                                    "-";
                             }
                             if (activeUI.summaryContent) {
                                 if (typeof eventPayload.summary_html === "string" && eventPayload.summary_html) {
@@ -816,6 +1000,7 @@
 
         const serverRenderedChatBindings = buildChatBindings(document.querySelector(".chat-section"));
         attachChatStreamHandler(serverRenderedChatBindings);
+        bindCopyButtons(document);
 
         if (urlInput) {
             const debouncedUpdate = debounce(updatePreview, 220);
