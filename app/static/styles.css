@@ -630,8 +630,25 @@ input[type="url"]:focus {
 .chat-message-content {
     margin: 0;
     line-height: 1.5;
-    white-space: pre-wrap;
+    white-space: normal;
     word-break: break-word;
+}
+
+.chat-message-content > :first-child {
+    margin-top: 0;
+}
+
+.chat-message-content > :last-child {
+    margin-bottom: 0;
+}
+
+.chat-message-content p {
+    margin: 0 0 0.4rem;
+}
+
+.chat-message-content ul {
+    margin: 0.2rem 0 0.5rem;
+    padding-left: 1.2rem;
 }
 
 .chat-empty {

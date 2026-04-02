@@ -148,7 +148,7 @@
                                 <i class="fa-solid {{ 'fa-user' if item.role == 'user' else 'fa-robot' }} fa-ui" aria-hidden="true"></i>
                                 <span>{{ "Tu" if item.role == "user" else "Assistente" }}</span>
                             </p>
-                            <p class="chat-message-content">{{ item.content }}</p>
+                            <div class="chat-message-content">{{ item.content_html | safe }}</div>
                         </article>
                         {% endfor %}
                         {% endif %}
@@ -490,7 +490,7 @@
                     <i class="fa-solid ${icon} fa-ui" aria-hidden="true"></i>
                     <span>${label}</span>
                 </p>
-                <p class="chat-message-content"></p>
+                <div class="chat-message-content"></div>
             `;
             const contentNode = article.querySelector(".chat-message-content");
             if (contentNode) {
@@ -571,7 +571,11 @@
                                 assistantContent = appendChatMessage(chatBindings, "assistant", "");
                             }
                             if (assistantContent) {
-                                assistantContent.textContent = assistantText;
+                                if (typeof eventPayload.answer_html === "string" && eventPayload.answer_html) {
+                                    assistantContent.innerHTML = eventPayload.answer_html;
+                                } else {
+                                    assistantContent.textContent = assistantText;
+                                }
                             }
                             if (eventPayload.chat) {
                                 applyChatSession(chatBindings, eventPayload.chat);

@@ -152,6 +152,30 @@ def render_summary_html(summary: str) -> str:
     return "".join(chunks) if chunks else "<p></p>"
 
 
+def render_user_message_html(message: str) -> str:
+    escaped = html.escape((message or "").strip())
+    return f"<p>{escaped}</p>" if escaped else "<p></p>"
+
+
+def render_chat_history(history: list[dict]) -> list[dict]:
+    rendered: list[dict] = []
+    for item in history:
+        role = item.get("role")
+        content = (item.get("content") or "").strip()
+        if role == "assistant":
+            content_html = render_summary_html(content)
+        else:
+            content_html = render_user_message_html(content)
+        rendered.append(
+            {
+                "role": role,
+                "content": content,
+                "content_html": content_html,
+            }
+        )
+    return rendered
+
+
 def absolute_site_url(path: str) -> str:
     normalized_path = path if path.startswith("/") else f"/{path}"
     base_url = SITE_URL or "http://127.0.0.1:8000"
@@ -216,7 +240,7 @@ def chat_view(session: dict) -> dict:
     return {
         "chat_id": session["chat_id"],
         "chat_token": session["active_form_token"],
-        "history": session["history"],
+        "history": render_chat_history(session["history"]),
         "remaining_messages": remaining_messages,
         "max_messages": CHAT_MAX_USER_MESSAGES,
         "limit_reached": remaining_messages == 0,
@@ -828,6 +852,7 @@ async def chat_stream_api(payload: ChatStreamApiRequest):
                 {
                     "type": "done",
                     "answer": assistant_answer,
+                    "answer_html": render_summary_html(assistant_answer),
                     "chat": chat_view(updated_session),
                 }
             )
