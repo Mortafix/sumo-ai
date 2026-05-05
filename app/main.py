@@ -639,6 +639,7 @@ async def summarize_api_stream(payload: SummarizeApiRequest):
                         "type": "done",
                         "summary": summary_text,
                         "summary_html": render_summary_html(summary_text),
+                        "transcript": transcript,
                         "meta": meta,
                         "chat": chat_view(chat_session),
                     }
@@ -705,6 +706,7 @@ async def summarize_api_stream(payload: SummarizeApiRequest):
                     "type": "done",
                     "summary": summary_text,
                     "summary_html": render_summary_html(summary_text),
+                    "transcript": transcript_data["text"],
                     "meta": meta,
                     "chat": chat_view(chat_session),
                 }

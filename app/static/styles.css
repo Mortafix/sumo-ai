@@ -525,6 +525,60 @@ input[type="url"]:focus {
     box-shadow: 0 8px 20px rgba(10, 15, 34, 0.35);
 }
 
+.result-tab-list {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.result-tab {
+    appearance: none;
+    border: 0;
+    border-radius: 9px;
+    min-height: 36px;
+    padding: 0 12px;
+    font: inherit;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--muted);
+    background: transparent;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    white-space: nowrap;
+}
+
+.result-tab.is-active {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.14);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16) inset;
+}
+
+.result-tab:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.11);
+}
+
+.result-tab:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+
+.result-tab-panel {
+    padding-top: 14px;
+}
+
+.result-tab-panel[hidden] {
+    display: none;
+}
+
 .summary-content {
     margin: 0;
     word-break: break-word;
@@ -554,6 +608,21 @@ input[type="url"]:focus {
 .summary-content h1 {
     margin: 12px 0 8px;
     line-height: 1.35;
+}
+
+.transcript-content {
+    margin: 0;
+    max-height: min(52vh, 460px);
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.6;
+    font: inherit;
+    color: #f5f7ff;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 12px;
+    background: rgba(3, 7, 18, 0.22);
+    padding: 12px;
 }
 
 .result-action-link {
@@ -855,6 +924,21 @@ input[type="url"]:focus {
 
     .chat-input-wrap {
         grid-template-columns: 1fr;
+    }
+
+    .result-tab-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+    }
+
+    .result-tab {
+        width: 100%;
+        padding: 0 8px;
+    }
+
+    .transcript-content {
+        max-height: 55vh;
     }
 }
 

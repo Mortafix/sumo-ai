@@ -110,26 +110,53 @@
                         </span>
                     </span>
                 </div>
-                <div class="summary-card">
-                    <div class="summary-header">
-                        <h2 class="summary-title">
+                <div class="summary-card result-tabs" data-result-tabs>
+                    <div class="result-tab-list" role="tablist" aria-label="Risultato del video">
+                        <button id="summary-tab" class="result-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="summary-panel" data-tab-target="summary-panel">
                             <i class="fa-solid fa-file-lines fa-ui" aria-hidden="true"></i>
-                            Riassunto
-                        </h2>
-                        <div class="summary-actions">
-                            <button class="ghost-link ghost-button result-action-link" type="button" data-copy-summary>
-                                <i class="fa-solid fa-copy fa-ui" data-role="copy-icon" aria-hidden="true"></i>
-                                <span data-role="copy-label">Copia riassunto</span>
-                            </button>
-                            {% if chat %}
-                            <a class="ghost-link ghost-button result-action-link" href="/transcript/{{ chat.chat_id }}.txt">
-                                <i class="fa-solid fa-download fa-ui" aria-hidden="true"></i>
-                                <span>Scarica riassunto</span>
-                            </a>
-                            {% endif %}
-                        </div>
+                            <span>Riassunto</span>
+                        </button>
+                        <button id="transcript-tab" class="result-tab" type="button" role="tab" aria-selected="false" aria-controls="transcript-panel" data-tab-target="transcript-panel">
+                            <i class="fa-solid fa-align-left fa-ui" aria-hidden="true"></i>
+                            <span>Trascrizione</span>
+                        </button>
                     </div>
-                    <div class="summary-content">{{ result.summary_html | safe }}</div>
+                    <div id="summary-panel" class="result-tab-panel" role="tabpanel" aria-labelledby="summary-tab" data-tab-panel>
+                        <div class="summary-header">
+                            <h2 class="summary-title">
+                                <i class="fa-solid fa-file-lines fa-ui" aria-hidden="true"></i>
+                                Riassunto
+                            </h2>
+                            <div class="summary-actions">
+                                <button class="ghost-link ghost-button result-action-link" type="button" data-copy-source=".summary-content" data-copy-mode="html" data-copy-default-label="Copia riassunto">
+                                    <i class="fa-solid fa-copy fa-ui" data-role="copy-icon" aria-hidden="true"></i>
+                                    <span data-role="copy-label">Copia riassunto</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="summary-content">{{ result.summary_html | safe }}</div>
+                    </div>
+                    <div id="transcript-panel" class="result-tab-panel" role="tabpanel" aria-labelledby="transcript-tab" data-tab-panel hidden>
+                        <div class="summary-header">
+                            <h2 class="summary-title">
+                                <i class="fa-solid fa-align-left fa-ui" aria-hidden="true"></i>
+                                Trascrizione
+                            </h2>
+                            <div class="summary-actions">
+                                <button class="ghost-link ghost-button result-action-link" type="button" data-copy-source=".transcript-content" data-copy-mode="text" data-copy-default-label="Copia trascrizione">
+                                    <i class="fa-solid fa-copy fa-ui" data-role="copy-icon" aria-hidden="true"></i>
+                                    <span data-role="copy-label">Copia trascrizione</span>
+                                </button>
+                                {% if chat %}
+                                <a class="ghost-link ghost-button result-action-link" href="/transcript/{{ chat.chat_id }}.txt">
+                                    <i class="fa-solid fa-download fa-ui" aria-hidden="true"></i>
+                                    <span>Scarica .txt</span>
+                                </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <pre class="transcript-content">{{ result.transcript }}</pre>
+                    </div>
                 </div>
                 {% if chat %}
                 <section class="chat-section" aria-label="Chat sul transcript">
@@ -622,24 +649,51 @@
                         </span>
                     </span>
                 </div>
-                <div class="summary-card">
-                    <div class="summary-header">
-                        <h2 class="summary-title">
+                <div class="summary-card result-tabs" data-result-tabs>
+                    <div class="result-tab-list" role="tablist" aria-label="Risultato del video">
+                        <button id="summary-tab-stream" class="result-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="summary-panel-stream" data-tab-target="summary-panel-stream">
                             <i class="fa-solid fa-file-lines fa-ui" aria-hidden="true"></i>
-                            Riassunto
-                        </h2>
-                        <div class="summary-actions">
-                            <button class="ghost-link ghost-button result-action-link" type="button" data-copy-summary>
-                                <i class="fa-solid fa-copy fa-ui" data-role="copy-icon" aria-hidden="true"></i>
-                                <span data-role="copy-label">Copia riassunto</span>
-                            </button>
-                            <a class="ghost-link ghost-button result-action-link" data-role="download-link" hidden>
-                                <i class="fa-solid fa-download fa-ui" aria-hidden="true"></i>
-                                <span>Scarica riassunto</span>
-                            </a>
-                        </div>
+                            <span>Riassunto</span>
+                        </button>
+                        <button id="transcript-tab-stream" class="result-tab" type="button" role="tab" aria-selected="false" aria-controls="transcript-panel-stream" data-tab-target="transcript-panel-stream">
+                            <i class="fa-solid fa-align-left fa-ui" aria-hidden="true"></i>
+                            <span>Trascrizione</span>
+                        </button>
                     </div>
-                    <div class="summary-content" data-role="summary-content"></div>
+                    <div id="summary-panel-stream" class="result-tab-panel" role="tabpanel" aria-labelledby="summary-tab-stream" data-tab-panel>
+                        <div class="summary-header">
+                            <h2 class="summary-title">
+                                <i class="fa-solid fa-file-lines fa-ui" aria-hidden="true"></i>
+                                Riassunto
+                            </h2>
+                            <div class="summary-actions">
+                                <button class="ghost-link ghost-button result-action-link" type="button" data-copy-source=".summary-content" data-copy-mode="html" data-copy-default-label="Copia riassunto">
+                                    <i class="fa-solid fa-copy fa-ui" data-role="copy-icon" aria-hidden="true"></i>
+                                    <span data-role="copy-label">Copia riassunto</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="summary-content" data-role="summary-content"></div>
+                    </div>
+                    <div id="transcript-panel-stream" class="result-tab-panel" role="tabpanel" aria-labelledby="transcript-tab-stream" data-tab-panel hidden>
+                        <div class="summary-header">
+                            <h2 class="summary-title">
+                                <i class="fa-solid fa-align-left fa-ui" aria-hidden="true"></i>
+                                Trascrizione
+                            </h2>
+                            <div class="summary-actions">
+                                <button class="ghost-link ghost-button result-action-link" type="button" data-copy-source=".transcript-content" data-copy-mode="text" data-copy-default-label="Copia trascrizione">
+                                    <i class="fa-solid fa-copy fa-ui" data-role="copy-icon" aria-hidden="true"></i>
+                                    <span data-role="copy-label">Copia trascrizione</span>
+                                </button>
+                                <a class="ghost-link ghost-button result-action-link" data-role="download-link" hidden>
+                                    <i class="fa-solid fa-download fa-ui" aria-hidden="true"></i>
+                                    <span>Scarica .txt</span>
+                                </a>
+                            </div>
+                        </div>
+                        <pre class="transcript-content" data-role="transcript-content"></pre>
+                    </div>
                 </div>
                 <section class="chat-section" aria-label="Chat sul transcript" hidden>
                     <div class="summary-header">
@@ -674,6 +728,7 @@
             panel.appendChild(root);
             const chatBindings = buildChatBindings(root.querySelector(".chat-section"));
             attachChatStreamHandler(chatBindings);
+            bindResultTabs(root);
             bindCopyButtons(root);
 
             return {
@@ -681,6 +736,7 @@
                 language: root.querySelector('[data-role="language"]'),
                 latency: root.querySelector('[data-role="latency"]'),
                 summaryContent: root.querySelector('[data-role="summary-content"]'),
+                transcriptContent: root.querySelector('[data-role="transcript-content"]'),
                 downloadLink: root.querySelector('[data-role="download-link"]'),
                 chatSection: root.querySelector(".chat-section"),
                 chatBindings,
@@ -696,6 +752,70 @@
         };
 
         const copyFeedbackTimers = new WeakMap();
+
+        const activateResultTab = (tab) => {
+            if (!tab) {
+                return;
+            }
+            const tabsRoot = tab.closest("[data-result-tabs]");
+            if (!tabsRoot) {
+                return;
+            }
+            const targetId = tab.dataset.tabTarget;
+            tabsRoot.querySelectorAll("[role='tab']").forEach((candidate) => {
+                const isActive = candidate === tab;
+                candidate.classList.toggle("is-active", isActive);
+                candidate.setAttribute("aria-selected", isActive ? "true" : "false");
+                candidate.tabIndex = isActive ? 0 : -1;
+            });
+            tabsRoot.querySelectorAll("[data-tab-panel]").forEach((panelNode) => {
+                panelNode.hidden = panelNode.id !== targetId;
+            });
+        };
+
+        const bindResultTabs = (scope = document) => {
+            if (!scope || !scope.querySelectorAll) {
+                return;
+            }
+            scope.querySelectorAll("[data-result-tabs]").forEach((tabsRoot) => {
+                if (tabsRoot.dataset.tabsBound === "1") {
+                    return;
+                }
+                tabsRoot.dataset.tabsBound = "1";
+                const tabs = Array.from(tabsRoot.querySelectorAll("[role='tab']"));
+                tabs.forEach((tab, index) => {
+                    tab.tabIndex = tab.getAttribute("aria-selected") === "true" ? 0 : -1;
+                    tab.addEventListener("click", () => activateResultTab(tab));
+                    tab.addEventListener("keydown", (event) => {
+                        const keyActions = {
+                            ArrowLeft: -1,
+                            ArrowUp: -1,
+                            ArrowRight: 1,
+                            ArrowDown: 1,
+                        };
+                        let nextIndex = null;
+                        if (event.key in keyActions) {
+                            nextIndex = (index + keyActions[event.key] + tabs.length) % tabs.length;
+                        } else if (event.key === "Home") {
+                            nextIndex = 0;
+                        } else if (event.key === "End") {
+                            nextIndex = tabs.length - 1;
+                        }
+                        if (nextIndex === null) {
+                            return;
+                        }
+                        event.preventDefault();
+                        const nextTab = tabs[nextIndex];
+                        activateResultTab(nextTab);
+                        nextTab.focus();
+                    });
+                });
+            });
+        };
+
+        const getCopyButtonDefaultLabel = (button) => {
+            return button?.dataset.copyDefaultLabel || "Copia";
+        };
 
         const setCopyButtonLabel = (button, label) => {
             const labelNode = button ? button.querySelector('[data-role="copy-label"]') : null;
@@ -723,7 +843,7 @@
             button.classList.remove("is-busy", "is-success", "is-error");
             button.disabled = false;
             setCopyButtonIcon(button, "fa-copy");
-            setCopyButtonLabel(button, "Copia riassunto");
+            setCopyButtonLabel(button, getCopyButtonDefaultLabel(button));
         };
 
         const setCopyButtonState = (button, state) => {
@@ -787,30 +907,31 @@
             return copied;
         };
 
-        const copySummaryFromButton = async (button) => {
+        const copyContentFromButton = async (button) => {
             if (!button) {
                 return;
             }
             setCopyButtonState(button, "busy");
 
-            const summaryCard = button.closest(".summary-card");
-            const summaryContent = summaryCard ?
-                summaryCard.querySelector(".summary-content") :
+            const resultCard = button.closest(".summary-card");
+            const sourceSelector = button.dataset.copySource || ".summary-content";
+            const copyMode = button.dataset.copyMode || "html";
+            const contentNode = resultCard ?
+                resultCard.querySelector(sourceSelector) :
                 null;
-            if (!summaryContent) {
+            if (!contentNode) {
                 setCopyButtonState(button, "empty");
                 scheduleCopyButtonReset(button);
                 return;
             }
 
-            const summaryHtml = (summaryContent.innerHTML || "").trim();
-            const summaryText = (
-                summaryContent.innerText ||
-                summaryContent.textContent ||
-                ""
-            ).trim();
+            const sourceHtml = copyMode === "html" ? (contentNode.innerHTML || "").trim() : "";
+            const rawText = copyMode === "text" ?
+                contentNode.textContent :
+                (contentNode.innerText || contentNode.textContent);
+            const sourceText = (rawText || "").trim();
 
-            if (!summaryHtml && !summaryText) {
+            if (!sourceHtml && !sourceText) {
                 setCopyButtonState(button, "empty");
                 scheduleCopyButtonReset(button);
                 return;
@@ -818,11 +939,11 @@
 
             let copied = false;
             try {
-                if (navigator.clipboard && window.ClipboardItem && summaryHtml) {
+                if (copyMode === "html" && navigator.clipboard && window.ClipboardItem && sourceHtml) {
                     try {
                         const clipboardItem = new ClipboardItem({
-                            "text/html": new Blob([summaryHtml], { type: "text/html" }),
-                            "text/plain": new Blob([summaryText], { type: "text/plain" }),
+                            "text/html": new Blob([sourceHtml], { type: "text/html" }),
+                            "text/plain": new Blob([sourceText], { type: "text/plain" }),
                         });
                         await navigator.clipboard.write([clipboardItem]);
                         copied = true;
@@ -832,7 +953,7 @@
                 }
 
                 if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(summaryText);
+                    await navigator.clipboard.writeText(sourceText);
                     copied = true;
                 }
             } catch (_clipboardErr) {
@@ -841,7 +962,7 @@
 
             if (!copied) {
                 try {
-                    copied = fallbackCopyText(summaryText);
+                    copied = fallbackCopyText(sourceText);
                 } catch (_fallbackErr) {
                     copied = false;
                 }
@@ -855,13 +976,13 @@
             if (!scope || !scope.querySelectorAll) {
                 return;
             }
-            scope.querySelectorAll("[data-copy-summary]").forEach((button) => {
+            scope.querySelectorAll("[data-copy-source], [data-copy-summary]").forEach((button) => {
                 if (button.dataset.copyBound === "1") {
                     return;
                 }
                 button.dataset.copyBound = "1";
                 button.addEventListener("click", () => {
-                    copySummaryFromButton(button);
+                    copyContentFromButton(button);
                 });
             });
         };
@@ -979,6 +1100,9 @@
                                     activeUI.summaryContent.textContent = eventPayload.summary || streamingText;
                                 }
                             }
+                            if (activeUI.transcriptContent) {
+                                activeUI.transcriptContent.textContent = eventPayload.transcript || "";
+                            }
                             if (eventPayload.chat) {
                                 if (activeUI.chatSection) {
                                     activeUI.chatSection.hidden = false;
@@ -1004,6 +1128,7 @@
 
         const serverRenderedChatBindings = buildChatBindings(document.querySelector(".chat-section"));
         attachChatStreamHandler(serverRenderedChatBindings);
+        bindResultTabs(document);
         bindCopyButtons(document);
 
         if (urlInput) {

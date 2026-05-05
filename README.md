@@ -116,7 +116,7 @@ Eventi riassunto (`/api/summarize/stream`):
 - `start`: inizio elaborazione
 - `meta`: metadati iniziali (`video_id`, `language`, `mode`, `cached`)
 - `chunk`: pezzo di testo del riassunto
-- `done`: risultato finale (`summary`, `summary_html`, `meta`, `chat`)
+- `done`: risultato finale (`summary`, `summary_html`, `transcript`, `meta`, `chat`)
 - `error`: errore (`detail`, `status`)
 
 Eventi chat (`/api/chat/stream`):
@@ -130,6 +130,8 @@ Eventi chat (`/api/chat/stream`):
 ## Chat sul transcript (UI web)
 
 Dopo la generazione del riassunto, la pagina mostra:
+- due tab risultato: `Riassunto` e `Trascrizione`
+- nel tab `Trascrizione`, il transcript grezzo con copia e download `.txt`
 - una chat contestuale al transcript del video
 - limite massimo: `3` messaggi utente
 - storico conversazione nella stessa sessione in-memory
