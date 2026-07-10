@@ -7,10 +7,15 @@ from time import perf_counter
 from typing import Literal
 
 from app.services.cache_service import (InMemoryChatSessionStore,
+                                        InMemoryCommentsAnalysisCache,
                                         InMemoryTTLCache, make_key)
+from app.services.comments_service import (CommentsError,
+                                           fetch_comment_sample,
+                                           prepare_comments_for_analysis)
 from app.services.metrics_service import InMemoryMetrics
 from app.services.summarizer_service import (SummarizerError,
                                              answer_about_transcript,
+                                             stream_analyze_comments,
                                              stream_answer_about_transcript,
                                              stream_summarize_text,
                                              summarize_text)
@@ -40,6 +45,7 @@ app = FastAPI(title="Sumo AI")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 summary_cache = InMemoryTTLCache()
+comments_analysis_cache = InMemoryCommentsAnalysisCache()
 chat_sessions = InMemoryChatSessionStore()
 metrics_service = InMemoryMetrics()
 logger = logging.getLogger(__name__)
@@ -67,6 +73,10 @@ class ChatStreamApiRequest(BaseModel):
     chat_id: str = Field(..., min_length=1)
     chat_token: str = Field(..., min_length=1)
     message: str = Field(..., min_length=1, max_length=600)
+
+
+class CommentsAnalysisApiRequest(BaseModel):
+    video_id: str = Field(..., min_length=1, max_length=200)
 
 
 class MetricsBucketResponse(BaseModel):
@@ -263,6 +273,28 @@ def summary_result_from_session(session: dict) -> dict:
     }
 
 
+def partial_summary_result(
+    *,
+    video_id: str,
+    mode: SummaryMode,
+    detail: str,
+    processing_ms: float,
+) -> dict:
+    return {
+        "summary": "",
+        "summary_html": "",
+        "summary_error": detail,
+        "transcript": "",
+        "meta": {
+            "video_id": video_id,
+            "language": "non disponibile",
+            "mode": mode,
+            "cached": False,
+            "processing_ms": processing_ms,
+        },
+    }
+
+
 async def base_index_context(
     request: Request,
     *,
@@ -408,6 +440,7 @@ async def summarize(
 ):
     selected_mode = normalize_mode(mode)
     context = await base_index_context(request, url=url, mode=selected_mode)
+    started_at = perf_counter()
 
     try:
         context["result"] = await summarize_video(url=url, mode=selected_mode)
@@ -426,10 +459,29 @@ async def summarize(
             ttl_seconds=CHAT_SESSION_TTL_SECONDS,
         )
         context["chat"] = chat_view(chat_session)
-    except (TranscriptError, SummarizerError) as exc:
+    except InvalidYouTubeUrlError as exc:
         context["error"] = str(exc)
+    except (TranscriptError, SummarizerError) as exc:
+        video_id = extract_video_id(url)
+        context["result"] = partial_summary_result(
+            video_id=video_id,
+            mode=selected_mode,
+            detail=str(exc),
+            processing_ms=elapsed_ms(started_at),
+        )
     except Exception as exc:  # pragma: no cover - defensive fallback
-        context["error"] = f"Unexpected error: {exc}"
+        try:
+            video_id = extract_video_id(url)
+        except InvalidYouTubeUrlError:
+            context["error"] = "Errore interno durante il riassunto."
+        else:
+            context["result"] = partial_summary_result(
+                video_id=video_id,
+                mode=selected_mode,
+                detail="Impossibile completare il riassunto del video.",
+                processing_ms=elapsed_ms(started_at),
+            )
+        logger.exception("html_summarize unexpected_error mode=%s", selected_mode)
     context["metrics"] = await metrics_service.snapshot()
 
     return templates.TemplateResponse("index.html", context)
@@ -568,6 +620,9 @@ async def summarize_api_stream(payload: SummarizeApiRequest):
 
     async def stream():
         started_at = perf_counter()
+        video_id: str | None = None
+        partial_transcript = ""
+        partial_language = "non disponibile"
         await metrics_service.record_request(selected_mode)
         yield ndjson_line({"type": "start"})
         try:
@@ -612,17 +667,19 @@ async def summarize_api_stream(payload: SummarizeApiRequest):
                     processing_ms=processing_ms,
                     cached=True,
                 )
-                chat_session = await chat_sessions.create(
-                    {
-                        "video_id": video_id,
-                        "mode": selected_mode,
-                        "language": language,
-                        "summary": summary_text,
-                        "transcript": transcript,
-                        "processing_ms": processing_ms,
-                    },
-                    ttl_seconds=CHAT_SESSION_TTL_SECONDS,
-                )
+                chat_session = None
+                if transcript:
+                    chat_session = await chat_sessions.create(
+                        {
+                            "video_id": video_id,
+                            "mode": selected_mode,
+                            "language": language,
+                            "summary": summary_text,
+                            "transcript": transcript,
+                            "processing_ms": processing_ms,
+                        },
+                        ttl_seconds=CHAT_SESSION_TTL_SECONDS,
+                    )
                 yield ndjson_line(
                     {
                         "type": "meta",
@@ -641,12 +698,14 @@ async def summarize_api_stream(payload: SummarizeApiRequest):
                         "summary_html": render_summary_html(summary_text),
                         "transcript": transcript,
                         "meta": meta,
-                        "chat": chat_view(chat_session),
+                        "chat": chat_view(chat_session) if chat_session else None,
                     }
                 )
                 return
 
             transcript_data = fetch_transcript(video_id)
+            partial_transcript = transcript_data["text"]
+            partial_language = transcript_data["language"]
             yield ndjson_line(
                 {
                     "type": "meta",
@@ -743,6 +802,10 @@ async def summarize_api_stream(payload: SummarizeApiRequest):
                     "type": "error",
                     "detail": str(exc),
                     "status": 503,
+                    "partial": bool(video_id),
+                    "video_id": video_id,
+                    "transcript": partial_transcript,
+                    "language": partial_language,
                 }
             )
         except Exception:
@@ -757,7 +820,156 @@ async def summarize_api_stream(payload: SummarizeApiRequest):
             yield ndjson_line(
                 {
                     "type": "error",
-                    "detail": "Unexpected internal error.",
+                    "detail": "Impossibile completare il riassunto del video.",
+                    "status": 500,
+                    "partial": bool(video_id),
+                    "video_id": video_id,
+                    "transcript": partial_transcript,
+                    "language": partial_language,
+                }
+            )
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+
+@app.post("/api/comments/analyze/stream")
+async def comments_analysis_stream_api(payload: CommentsAnalysisApiRequest):
+    async def stream():
+        started_at = perf_counter()
+        yield ndjson_line({"type": "start"})
+        try:
+            video_id = extract_video_id(payload.video_id)
+            cache_hit = await comments_analysis_cache.get(video_id)
+            if cache_hit:
+                analysis = (cache_hit.get("analysis") or "").strip()
+                meta = {
+                    "video_id": video_id,
+                    "found_count": cache_hit["found_count"],
+                    "analyzed_count": cache_hit["analyzed_count"],
+                    "relevant_count": cache_hit["relevant_count"],
+                    "recent_count": cache_hit["recent_count"],
+                    "cached": True,
+                    "processing_ms": elapsed_ms(started_at),
+                }
+                logger.info(
+                    "comments_analysis cache_hit video_id=%s found=%s analyzed=%s",
+                    video_id,
+                    meta["found_count"],
+                    meta["analyzed_count"],
+                )
+                yield ndjson_line({"type": "meta", **meta})
+                if analysis:
+                    yield ndjson_line({"type": "chunk", "text": analysis})
+                yield ndjson_line(
+                    {
+                        "type": "done",
+                        "analysis": analysis,
+                        "analysis_html": render_summary_html(analysis),
+                        "meta": meta,
+                    }
+                )
+                return
+
+            sample = await fetch_comment_sample(video_id)
+            comments_text, analyzed_count = prepare_comments_for_analysis(sample)
+            initial_meta = {
+                "video_id": video_id,
+                "found_count": sample.found_count,
+                "analyzed_count": analyzed_count,
+                "relevant_count": sample.relevant_count,
+                "recent_count": sample.recent_count,
+                "cached": False,
+            }
+            yield ndjson_line({"type": "meta", **initial_meta})
+
+            chunks: list[str] = []
+            async for chunk in stream_analyze_comments(
+                comments_text,
+                found_count=sample.found_count,
+                analyzed_count=analyzed_count,
+            ):
+                chunks.append(chunk)
+                yield ndjson_line({"type": "chunk", "text": chunk})
+
+            analysis = "".join(chunks).strip()
+            if not analysis:
+                raise SummarizerError(
+                    "Il modello AI non ha restituito alcuna analisi dei commenti."
+                )
+            await comments_analysis_cache.set(
+                video_id,
+                {
+                    "analysis": analysis,
+                    "found_count": sample.found_count,
+                    "analyzed_count": analyzed_count,
+                    "relevant_count": sample.relevant_count,
+                    "recent_count": sample.recent_count,
+                },
+                ttl_seconds=SUMMARY_CACHE_TTL_SECONDS,
+            )
+            meta = {**initial_meta, "processing_ms": elapsed_ms(started_at)}
+            logger.info(
+                "comments_analysis success video_id=%s found=%s analyzed=%s processing_ms=%.2f",
+                video_id,
+                sample.found_count,
+                analyzed_count,
+                meta["processing_ms"],
+            )
+            yield ndjson_line(
+                {
+                    "type": "done",
+                    "analysis": analysis,
+                    "analysis_html": render_summary_html(analysis),
+                    "meta": meta,
+                }
+            )
+        except InvalidYouTubeUrlError as exc:
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": str(exc),
+                    "code": "invalid_video_id",
+                    "status": 400,
+                }
+            )
+        except CommentsError as exc:
+            logger.warning(
+                "comments_analysis comments_error video_id=%s code=%s error=%s",
+                payload.video_id,
+                exc.code,
+                exc,
+            )
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": str(exc),
+                    "code": exc.code,
+                    "status": exc.status,
+                }
+            )
+        except SummarizerError as exc:
+            logger.error(
+                "comments_analysis model_error video_id=%s error=%s",
+                payload.video_id,
+                exc,
+            )
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": str(exc),
+                    "code": "analysis_error",
+                    "status": 503,
+                }
+            )
+        except Exception:
+            logger.exception(
+                "comments_analysis unexpected_error video_id=%s", payload.video_id
+            )
+            yield ndjson_line(
+                {
+                    "type": "error",
+                    "detail": "Errore interno durante l'analisi dei commenti.",
+                    "code": "unexpected_error",
                     "status": 500,
                 }
             )

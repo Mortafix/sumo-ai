@@ -61,6 +61,7 @@ def fetch_transcript(url_or_id: str) -> dict:
         )
         transcript = yt_api.fetch(video_id, languages=["it", "en"])
     except Exception as exc:
+        raise exc
         raise TranscriptError(
             "Impossibile recuperare la trascrizione. "
             "Verifica che il video abbia sottotitoli disponibili."

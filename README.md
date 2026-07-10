@@ -6,6 +6,7 @@ Applicazione FastAPI + Jinja che:
 - genera riassunto con AI (Ollama o OpenAI)
 - offre una mini-chat sul transcript (max 3 messaggi utente)
 - permette download del transcript in `.txt`
+- analizza un campione bilanciato dei commenti pubblici YouTube
 - espone metriche runtime e dashboard `/stats`
 
 ## Requisiti
@@ -51,6 +52,7 @@ Con `url` nei query params, la pagina viene renderizzata subito (form + preview 
 - `OPENAI_BASE_URL` (default: `https://api.openai.com/v1`)
 - `OPENAI_API_KEY` 
 - `OPENAI_MODEL` 
+- `YOUTUBE_API_KEY` chiave server-side per leggere i commenti tramite YouTube Data API v3
 - `SITE_URL` per canonical/meta URL
 - `FOLDER` root da cui leggere i prompt in `app/static/prompts/`
 
@@ -126,6 +128,29 @@ Eventi chat (`/api/chat/stream`):
 - `chunk`: pezzo di testo della risposta assistente
 - `done`: risposta finale (`answer`, `chat`)
 - `error`: errore (`detail`, `status`, opzionale `chat`)
+
+## Analisi commenti YouTube
+
+Endpoint streaming:
+
+`POST /api/comments/analyze/stream`
+
+Request:
+
+```json
+{
+  "video_id": "dQw4w9WgXcQ"
+}
+```
+
+La risposta usa `application/x-ndjson` con eventi `start`, `meta`, `chunk`,
+`done` ed `error`. Gli eventi finali includono il numero di commenti trovati e
+analizzati, la composizione del campione rilevanti/recenti e lo stato della cache.
+
+L'analisi parte quando viene aperto il tab `Commenti`, usa fino a 150 commenti
+rilevanti e 150 recenti e viene conservata in-memory per un'ora. Sono analizzati
+solo i commenti principali pubblicamente accessibili, non le risposte. Se la
+trascrizione non è disponibile, il tab resta comunque utilizzabile.
 
 ## Chat sul transcript (UI web)
 

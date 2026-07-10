@@ -1,5 +1,5 @@
 Produci il riassunto in italiano seguendo ESATTAMENTE questa struttura:
-Paragrafo breve:
+Riassunto:
 - 1 paragrafo compatto (4-6 frasi) con il senso generale.
 Punti chiave:
 - ESATTAMENTE 3 bullet points essenziali.

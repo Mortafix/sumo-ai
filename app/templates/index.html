@@ -110,7 +110,7 @@
                         </span>
                     </span>
                 </div>
-                <div class="summary-card result-tabs" data-result-tabs>
+                <div class="summary-card result-tabs" data-result-tabs data-video-id="{{ result.meta.video_id }}">
                     <div class="result-tab-list" role="tablist" aria-label="Risultato del video">
                         <button id="summary-tab" class="result-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="summary-panel" data-tab-target="summary-panel">
                             <i class="fa-solid fa-file-lines fa-ui" aria-hidden="true"></i>
@@ -120,6 +120,10 @@
                             <i class="fa-solid fa-align-left fa-ui" aria-hidden="true"></i>
                             <span>Trascrizione</span>
                         </button>
+                        <button id="comments-tab" class="result-tab" type="button" role="tab" aria-selected="false" aria-controls="comments-panel" data-tab-target="comments-panel" data-comments-tab>
+                            <i class="fa-solid fa-comments fa-ui" aria-hidden="true"></i>
+                            <span>Commenti</span>
+                        </button>
                     </div>
                     <div id="summary-panel" class="result-tab-panel" role="tabpanel" aria-labelledby="summary-tab" data-tab-panel>
                         <div class="summary-header">
@@ -128,13 +132,17 @@
                                 Riassunto
                             </h2>
                             <div class="summary-actions">
-                                <button class="ghost-link ghost-button result-action-link" type="button" data-copy-source=".summary-content" data-copy-mode="html" data-copy-default-label="Copia riassunto">
+                                <button class="ghost-link ghost-button result-action-link" type="button" data-copy-source=".summary-content" data-copy-mode="html" data-copy-default-label="Copia riassunto"{% if result.summary_error %} hidden{% endif %}>
                                     <i class="fa-solid fa-copy fa-ui" data-role="copy-icon" aria-hidden="true"></i>
                                     <span data-role="copy-label">Copia riassunto</span>
                                 </button>
                             </div>
                         </div>
+                        {% if result.summary_error %}
+                        <div class="message error" data-role="summary-unavailable">{{ result.summary_error }}</div>
+                        {% else %}
                         <div class="summary-content">{{ result.summary_html | safe }}</div>
+                        {% endif %}
                     </div>
                     <div id="transcript-panel" class="result-tab-panel" role="tabpanel" aria-labelledby="transcript-tab" data-tab-panel hidden>
                         <div class="summary-header">
@@ -143,7 +151,7 @@
                                 Trascrizione
                             </h2>
                             <div class="summary-actions">
-                                <button class="ghost-link ghost-button result-action-link" type="button" data-copy-source=".transcript-content" data-copy-mode="text" data-copy-default-label="Copia trascrizione">
+                                <button class="ghost-link ghost-button result-action-link" type="button" data-copy-source=".transcript-content" data-copy-mode="text" data-copy-default-label="Copia trascrizione"{% if not result.transcript %} hidden{% endif %}>
                                     <i class="fa-solid fa-copy fa-ui" data-role="copy-icon" aria-hidden="true"></i>
                                     <span data-role="copy-label">Copia trascrizione</span>
                                 </button>
@@ -155,7 +163,33 @@
                                 {% endif %}
                             </div>
                         </div>
+                        {% if result.transcript %}
                         <pre class="transcript-content">{{ result.transcript }}</pre>
+                        {% else %}
+                        <div class="message error" data-role="transcript-unavailable">Trascrizione non disponibile per questo video.</div>
+                        {% endif %}
+                    </div>
+                    <div id="comments-panel" class="result-tab-panel" role="tabpanel" aria-labelledby="comments-tab" data-tab-panel data-comments-panel hidden>
+                        <div class="summary-header">
+                            <h2 class="summary-title">
+                                <i class="fa-solid fa-comments fa-ui" aria-hidden="true"></i>
+                                Cosa ne pensa il pubblico
+                            </h2>
+                            <div class="summary-actions">
+                                <button class="ghost-link ghost-button result-action-link" type="button" data-copy-source=".comments-analysis-content" data-copy-mode="html" data-copy-default-label="Copia analisi" data-comments-copy hidden>
+                                    <i class="fa-solid fa-copy fa-ui" data-role="copy-icon" aria-hidden="true"></i>
+                                    <span data-role="copy-label">Copia analisi</span>
+                                </button>
+                            </div>
+                        </div>
+                        <p class="comments-status" data-comments-status role="status">Apri questa sezione per analizzare i commenti pubblici.</p>
+                        <p class="comments-meta" data-comments-meta hidden></p>
+                        <div class="summary-content comments-analysis-content" data-comments-content></div>
+                        <div class="message error" data-comments-error hidden></div>
+                        <button class="ghost-link ghost-button result-action-link comments-retry" type="button" data-comments-retry hidden>
+                            <i class="fa-solid fa-rotate-right fa-ui" aria-hidden="true"></i>
+                            <span>Riprova</span>
+                        </button>
                     </div>
                 </div>
                 {% if chat %}
@@ -659,6 +693,10 @@
                             <i class="fa-solid fa-align-left fa-ui" aria-hidden="true"></i>
                             <span>Trascrizione</span>
                         </button>
+                        <button id="comments-tab-stream" class="result-tab" type="button" role="tab" aria-selected="false" aria-controls="comments-panel-stream" data-tab-target="comments-panel-stream" data-comments-tab>
+                            <i class="fa-solid fa-comments fa-ui" aria-hidden="true"></i>
+                            <span>Commenti</span>
+                        </button>
                     </div>
                     <div id="summary-panel-stream" class="result-tab-panel" role="tabpanel" aria-labelledby="summary-tab-stream" data-tab-panel>
                         <div class="summary-header">
@@ -673,6 +711,7 @@
                                 </button>
                             </div>
                         </div>
+                        <div class="message error" data-role="summary-unavailable" hidden></div>
                         <div class="summary-content" data-role="summary-content"></div>
                     </div>
                     <div id="transcript-panel-stream" class="result-tab-panel" role="tabpanel" aria-labelledby="transcript-tab-stream" data-tab-panel hidden>
@@ -692,7 +731,30 @@
                                 </a>
                             </div>
                         </div>
+                        <div class="message error" data-role="transcript-unavailable" hidden>Trascrizione non disponibile per questo video.</div>
                         <pre class="transcript-content" data-role="transcript-content"></pre>
+                    </div>
+                    <div id="comments-panel-stream" class="result-tab-panel" role="tabpanel" aria-labelledby="comments-tab-stream" data-tab-panel data-comments-panel hidden>
+                        <div class="summary-header">
+                            <h2 class="summary-title">
+                                <i class="fa-solid fa-comments fa-ui" aria-hidden="true"></i>
+                                Cosa ne pensa il pubblico
+                            </h2>
+                            <div class="summary-actions">
+                                <button class="ghost-link ghost-button result-action-link" type="button" data-copy-source=".comments-analysis-content" data-copy-mode="html" data-copy-default-label="Copia analisi" data-comments-copy hidden>
+                                    <i class="fa-solid fa-copy fa-ui" data-role="copy-icon" aria-hidden="true"></i>
+                                    <span data-role="copy-label">Copia analisi</span>
+                                </button>
+                            </div>
+                        </div>
+                        <p class="comments-status" data-comments-status role="status">Apri questa sezione per analizzare i commenti pubblici.</p>
+                        <p class="comments-meta" data-comments-meta hidden></p>
+                        <div class="summary-content comments-analysis-content" data-comments-content></div>
+                        <div class="message error" data-comments-error hidden></div>
+                        <button class="ghost-link ghost-button result-action-link comments-retry" type="button" data-comments-retry hidden>
+                            <i class="fa-solid fa-rotate-right fa-ui" aria-hidden="true"></i>
+                            <span>Riprova</span>
+                        </button>
                     </div>
                 </div>
                 <section class="chat-section" aria-label="Chat sul transcript" hidden>
@@ -733,10 +795,13 @@
 
             return {
                 root,
+                tabsRoot: root.querySelector("[data-result-tabs]"),
                 language: root.querySelector('[data-role="language"]'),
                 latency: root.querySelector('[data-role="latency"]'),
                 summaryContent: root.querySelector('[data-role="summary-content"]'),
+                summaryUnavailable: root.querySelector('[data-role="summary-unavailable"]'),
                 transcriptContent: root.querySelector('[data-role="transcript-content"]'),
+                transcriptUnavailable: root.querySelector('[data-role="transcript-unavailable"]'),
                 downloadLink: root.querySelector('[data-role="download-link"]'),
                 chatSection: root.querySelector(".chat-section"),
                 chatBindings,
@@ -810,6 +875,7 @@
                         nextTab.focus();
                     });
                 });
+                bindCommentsAnalysis(tabsRoot);
             });
         };
 
@@ -987,6 +1053,187 @@
             });
         };
 
+        const getCommentsBindings = (tabsRoot) => {
+            const panelNode = tabsRoot ? tabsRoot.querySelector("[data-comments-panel]") : null;
+            if (!panelNode) {
+                return null;
+            }
+            return {
+                tabsRoot,
+                panel: panelNode,
+                tab: tabsRoot.querySelector("[data-comments-tab]"),
+                status: panelNode.querySelector("[data-comments-status]"),
+                meta: panelNode.querySelector("[data-comments-meta]"),
+                content: panelNode.querySelector("[data-comments-content]"),
+                error: panelNode.querySelector("[data-comments-error]"),
+                retry: panelNode.querySelector("[data-comments-retry]"),
+                copy: panelNode.querySelector("[data-comments-copy]"),
+            };
+        };
+
+        const setCommentsMeta = (bindings, meta) => {
+            if (!bindings?.meta || !meta) {
+                return;
+            }
+            const found = Number(meta.found_count) || 0;
+            const analyzed = Number(meta.analyzed_count) || 0;
+            const relevant = Number(meta.relevant_count) || 0;
+            const recent = Number(meta.recent_count) || 0;
+            const cacheLabel = meta.cached ? " · dalla cache" : "";
+            bindings.meta.textContent =
+                `${found} trovati · ${analyzed} analizzati · ${relevant} rilevanti + ${recent} recenti${cacheLabel}`;
+            bindings.meta.hidden = false;
+        };
+
+        const resetCommentsView = (bindings) => {
+            if (!bindings) {
+                return;
+            }
+            bindings.tabsRoot.dataset.commentsState = "idle";
+            if (bindings.status) {
+                bindings.status.textContent = "Analisi dei commenti in preparazione...";
+                bindings.status.hidden = false;
+                bindings.status.classList.remove("is-loading");
+            }
+            if (bindings.meta) {
+                bindings.meta.textContent = "";
+                bindings.meta.hidden = true;
+            }
+            if (bindings.content) {
+                bindings.content.textContent = "";
+            }
+            if (bindings.error) {
+                bindings.error.textContent = "";
+                bindings.error.hidden = true;
+            }
+            if (bindings.retry) {
+                bindings.retry.hidden = true;
+            }
+            if (bindings.copy) {
+                bindings.copy.hidden = true;
+            }
+        };
+
+        const startCommentsAnalysis = async (tabsRoot, { force = false } = {}) => {
+            const bindings = getCommentsBindings(tabsRoot);
+            if (!bindings) {
+                return;
+            }
+            const currentState = tabsRoot.dataset.commentsState || "idle";
+            if (!force && ["loading", "done"].includes(currentState)) {
+                return;
+            }
+            const videoId = (tabsRoot.dataset.videoId || "").trim();
+            if (!idPattern.test(videoId)) {
+                tabsRoot.dataset.commentsState = "error";
+                if (bindings.error) {
+                    bindings.error.textContent = "ID del video non disponibile.";
+                    bindings.error.hidden = false;
+                }
+                if (bindings.retry) {
+                    bindings.retry.hidden = false;
+                }
+                return;
+            }
+
+            resetCommentsView(bindings);
+            tabsRoot.dataset.commentsState = "loading";
+            if (bindings.status) {
+                bindings.status.textContent = "Recupero e analisi dei commenti pubblici...";
+                bindings.status.classList.add("is-loading");
+            }
+
+            let analysisText = "";
+            try {
+                const response = await fetch("/api/comments/analyze/stream", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Accept": "application/x-ndjson",
+                    },
+                    body: JSON.stringify({ video_id: videoId }),
+                });
+                await consumeNdjson(response, (eventPayload) => {
+                    if (!eventPayload || typeof eventPayload !== "object") {
+                        return;
+                    }
+                    if (eventPayload.type === "meta") {
+                        setCommentsMeta(bindings, eventPayload);
+                    }
+                    if (eventPayload.type === "chunk") {
+                        analysisText += eventPayload.text || "";
+                        if (bindings.content) {
+                            bindings.content.textContent = analysisText;
+                        }
+                    }
+                    if (eventPayload.type === "done") {
+                        const meta = eventPayload.meta || {};
+                        setCommentsMeta(bindings, meta);
+                        tabsRoot.dataset.commentsState = "done";
+                        if (bindings.status) {
+                            bindings.status.textContent = "Analisi completata.";
+                            bindings.status.classList.remove("is-loading");
+                        }
+                        if (bindings.content) {
+                            if (eventPayload.analysis_html) {
+                                bindings.content.innerHTML = eventPayload.analysis_html;
+                            } else {
+                                bindings.content.textContent = eventPayload.analysis || analysisText;
+                            }
+                        }
+                        if (bindings.copy) {
+                            bindings.copy.hidden = false;
+                        }
+                    }
+                    if (eventPayload.type === "error") {
+                        tabsRoot.dataset.commentsState = "error";
+                        if (bindings.status) {
+                            bindings.status.hidden = true;
+                            bindings.status.classList.remove("is-loading");
+                        }
+                        if (bindings.error) {
+                            bindings.error.textContent = eventPayload.detail || "Errore durante l'analisi dei commenti.";
+                            bindings.error.hidden = false;
+                        }
+                        if (bindings.retry) {
+                            bindings.retry.hidden = false;
+                        }
+                    }
+                });
+                if (tabsRoot.dataset.commentsState === "loading") {
+                    throw new Error("Streaming commenti incompleto");
+                }
+            } catch (_err) {
+                tabsRoot.dataset.commentsState = "error";
+                if (bindings.status) {
+                    bindings.status.hidden = true;
+                    bindings.status.classList.remove("is-loading");
+                }
+                if (bindings.error) {
+                    bindings.error.textContent = "Errore di rete durante l'analisi dei commenti.";
+                    bindings.error.hidden = false;
+                }
+                if (bindings.retry) {
+                    bindings.retry.hidden = false;
+                }
+            }
+        };
+
+        const bindCommentsAnalysis = (tabsRoot) => {
+            const bindings = getCommentsBindings(tabsRoot);
+            if (!bindings || tabsRoot.dataset.commentsBound === "1") {
+                return;
+            }
+            tabsRoot.dataset.commentsBound = "1";
+            tabsRoot.dataset.commentsState = tabsRoot.dataset.commentsState || "idle";
+            bindings.tab?.addEventListener("click", () => {
+                startCommentsAnalysis(tabsRoot);
+            });
+            bindings.retry?.addEventListener("click", () => {
+                startCommentsAnalysis(tabsRoot, { force: true });
+            });
+        };
+
         const getSelectedMode = () => {
             if (!form) {
                 return "veloce";
@@ -1040,6 +1287,9 @@
                     if (lastMeta && streamUI.language) {
                         streamUI.language.textContent = lastMeta.language || "-";
                     }
+                    if (lastMeta?.video_id && streamUI.tabsRoot) {
+                        streamUI.tabsRoot.dataset.videoId = lastMeta.video_id;
+                    }
                     return streamUI;
                 };
 
@@ -1061,6 +1311,9 @@
                             lastMeta = eventPayload;
                             if (streamUI && streamUI.language) {
                                 streamUI.language.textContent = eventPayload.language || "-";
+                            }
+                            if (streamUI?.tabsRoot && eventPayload.video_id) {
+                                streamUI.tabsRoot.dataset.videoId = eventPayload.video_id;
                             }
                         }
                         if (eventPayload.type === "chunk") {
@@ -1084,6 +1337,9 @@
                                 return;
                             }
                             const meta = eventPayload.meta || lastMeta || {};
+                            if (activeUI.tabsRoot && meta.video_id) {
+                                activeUI.tabsRoot.dataset.videoId = meta.video_id;
+                            }
                             if (activeUI.language) {
                                 activeUI.language.textContent = meta.language || activeUI.language.textContent || "-";
                             }
@@ -1094,14 +1350,23 @@
                                     "-";
                             }
                             if (activeUI.summaryContent) {
+                                activeUI.summaryContent.hidden = false;
                                 if (typeof eventPayload.summary_html === "string" && eventPayload.summary_html) {
                                     activeUI.summaryContent.innerHTML = eventPayload.summary_html;
                                 } else {
                                     activeUI.summaryContent.textContent = eventPayload.summary || streamingText;
                                 }
                             }
+                            if (activeUI.summaryUnavailable) {
+                                activeUI.summaryUnavailable.hidden = true;
+                            }
                             if (activeUI.transcriptContent) {
-                                activeUI.transcriptContent.textContent = eventPayload.transcript || "";
+                                const transcript = eventPayload.transcript || "";
+                                activeUI.transcriptContent.textContent = transcript;
+                                activeUI.transcriptContent.hidden = !transcript;
+                                if (activeUI.transcriptUnavailable) {
+                                    activeUI.transcriptUnavailable.hidden = Boolean(transcript);
+                                }
                             }
                             if (eventPayload.chat) {
                                 if (activeUI.chatSection) {
@@ -1115,7 +1380,48 @@
                             }
                         }
                         if (eventPayload.type === "error") {
-                            setStreamSummaryError(eventPayload.detail || "Errore durante il riassunto.");
+                            if (eventPayload.partial && eventPayload.video_id) {
+                                const activeUI = ensureStreamUI();
+                                if (!activeUI) {
+                                    return;
+                                }
+                                if (activeUI.tabsRoot) {
+                                    activeUI.tabsRoot.dataset.videoId = eventPayload.video_id;
+                                }
+                                if (activeUI.language) {
+                                    activeUI.language.textContent = eventPayload.language || "non disponibile";
+                                }
+                                if (activeUI.summaryContent) {
+                                    activeUI.summaryContent.hidden = true;
+                                }
+                                if (activeUI.summaryUnavailable) {
+                                    activeUI.summaryUnavailable.textContent = eventPayload.detail || "Riassunto non disponibile.";
+                                    activeUI.summaryUnavailable.hidden = false;
+                                }
+                                if (activeUI.transcriptContent) {
+                                    const transcript = eventPayload.transcript || "";
+                                    activeUI.transcriptContent.textContent = transcript;
+                                    activeUI.transcriptContent.hidden = !transcript;
+                                }
+                                if (activeUI.transcriptUnavailable) {
+                                    activeUI.transcriptUnavailable.hidden = Boolean(eventPayload.transcript);
+                                }
+                                activeUI.root.querySelectorAll(
+                                    "#summary-panel-stream [data-copy-source]"
+                                ).forEach((button) => {
+                                    button.hidden = true;
+                                });
+                                if (!eventPayload.transcript) {
+                                    activeUI.root.querySelectorAll(
+                                        "#transcript-panel-stream [data-copy-source]"
+                                    ).forEach((button) => {
+                                        button.hidden = true;
+                                    });
+                                }
+                                setStreamSummaryError("");
+                            } else {
+                                setStreamSummaryError(eventPayload.detail || "Errore durante il riassunto.");
+                            }
                         }
                     });
                 } catch (_err) {

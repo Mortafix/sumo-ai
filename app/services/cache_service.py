@@ -88,6 +88,35 @@ class InMemoryTTLCache:
         return payload
 
 
+class InMemoryCommentsAnalysisCache:
+    def __init__(self, time_provider: Callable[[], float] | None = None) -> None:
+        self._store: dict[str, dict] = {}
+        self._lock = asyncio.Lock()
+        self._time = time_provider or time.time
+
+    async def get(self, video_id: str) -> dict | None:
+        now = self._time()
+        async with self._lock:
+            entry = self._store.get(video_id)
+            if entry is None:
+                return None
+            if now > entry["expires_at"]:
+                self._store.pop(video_id, None)
+                return None
+            return dict(entry)
+
+    async def set(self, video_id: str, value: dict, ttl_seconds: int) -> dict:
+        now = self._time()
+        entry = {
+            **value,
+            "created_at": now,
+            "expires_at": now + ttl_seconds,
+        }
+        async with self._lock:
+            self._store[video_id] = entry
+        return dict(entry)
+
+
 class ChatMessage(TypedDict):
     role: Literal["user", "assistant"]
     content: str

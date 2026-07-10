@@ -15,6 +15,10 @@
     --focus: #f0f3ff;
 }
 
+[hidden] {
+    display: none !important;
+}
+
 * {
     box-sizing: border-box;
 }
@@ -625,6 +629,42 @@ input[type="url"]:focus {
     padding: 12px;
 }
 
+.comments-status,
+.comments-meta {
+    margin: 0 0 12px;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.comments-status.is-loading {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.comments-status.is-loading::before {
+    content: "";
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    border: 2px solid rgba(255, 255, 255, 0.28);
+    border-top-color: var(--text);
+    border-radius: 50%;
+    animation: spin 0.95s linear infinite;
+}
+
+.comments-meta {
+    font-size: 0.9rem;
+}
+
+.comments-analysis-content:empty {
+    display: none;
+}
+
+.comments-retry {
+    margin-top: 10px;
+}
+
 .result-action-link {
     height: 38px;
     border-radius: 12px;
@@ -928,7 +968,7 @@ input[type="url"]:focus {
 
     .result-tab-list {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         width: 100%;
     }
 
