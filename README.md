@@ -62,6 +62,8 @@ I template prompt sono file statici:
 - `app/static/prompts/oneline.txt`
 - `app/static/prompts/short.txt`
 - `app/static/prompts/detailed.txt`
+- `app/static/prompts/comments.txt` (analisi commenti, con placeholder
+  `{comments_text}`, `{found_count}` e `{analyzed_count}`)
 
 Nota: con `FOLDER=.` l'app si aspetta di essere avviata dalla root del progetto.
 
