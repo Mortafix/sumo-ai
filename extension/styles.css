@@ -1,0 +1,142 @@
+.sumo-thumbnail-host {
+  position: relative !important;
+}
+
+.sumo-thumbnail-button,
+.sumo-watch-button {
+  --sumo-neon-cyan: #00f5ff;
+  --sumo-neon-violet: #7a35ff;
+  --sumo-neon-pink: #ff2bd6;
+  align-items: center;
+  appearance: none;
+  animation: sumo-neon-flow 3.2s ease infinite;
+  background:
+    linear-gradient(
+      115deg,
+      var(--sumo-neon-cyan) 0%,
+      var(--sumo-neon-violet) 45%,
+      var(--sumo-neon-pink) 75%,
+      var(--sumo-neon-cyan) 100%
+    );
+  background-size: 260% 260%;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  box-shadow:
+    0 0 8px rgba(0, 245, 255, 0.72),
+    0 0 18px rgba(122, 53, 255, 0.58),
+    0 0 30px rgba(255, 43, 214, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+  box-sizing: border-box;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: Roboto, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 6px;
+  justify-content: center;
+  line-height: 1;
+  min-height: 34px;
+  padding: 6px 11px 6px 7px;
+  text-shadow: 0 1px 4px rgba(25, 0, 65, 0.8);
+  white-space: nowrap;
+}
+
+.sumo-thumbnail-button {
+  left: 8px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 8px;
+  transform: translateY(-3px);
+  transition:
+    opacity 120ms ease,
+    transform 160ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    filter 160ms ease;
+  z-index: 2147483647;
+}
+
+.sumo-home-video-card > .sumo-thumbnail-button {
+  bottom: 18px !important;
+  left: auto !important;
+  right: 18px !important;
+  top: auto !important;
+}
+
+.sumo-info-button-host > .sumo-thumbnail-button {
+  bottom: auto !important;
+  left: auto !important;
+  margin-top: 10px;
+  position: static !important;
+  right: auto !important;
+  top: auto !important;
+  width: max-content;
+}
+
+.sumo-thumbnail-host:hover > .sumo-thumbnail-button,
+.sumo-thumbnail-host:focus-within > .sumo-thumbnail-button,
+.sumo-thumbnail-host:hover
+  .sumo-info-button-host
+  > .sumo-thumbnail-button,
+.sumo-thumbnail-host:focus-within
+  .sumo-info-button-host
+  > .sumo-thumbnail-button,
+.sumo-thumbnail-button:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.sumo-thumbnail-button:hover,
+.sumo-thumbnail-button:focus-visible,
+.sumo-watch-button:hover,
+.sumo-watch-button:focus-visible {
+  filter: brightness(1.18) saturate(1.2);
+  outline: none;
+  transform: translateY(0) scale(1.06);
+}
+
+.sumo-thumbnail-button:focus-visible,
+.sumo-watch-button:focus-visible {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--sumo-neon-cyan),
+    0 0 24px var(--sumo-neon-pink);
+}
+
+.sumo-button-icon {
+  display: block;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.95));
+  height: 21px;
+  overflow: visible;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+  width: 21px;
+}
+
+.sumo-watch-button {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  min-height: 36px;
+}
+
+@keyframes sumo-neon-flow {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sumo-thumbnail-button,
+  .sumo-watch-button {
+    animation: none;
+    transition: none;
+  }
+}

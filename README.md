@@ -247,3 +247,88 @@ Sessione chat:
 - store in-memory separato
 - TTL: `3600` secondi (1 ora)
 - contiene `chat_id`, metadati video, `summary`, `transcript`, storico chat, contatore messaggi utente
+
+## Estensione locale Chrome/Brave/Firefox
+
+La cartella `extension/` contiene l'estensione privata **Sumo for YouTube**.
+Sulle pagine YouTube aggiunge:
+
+- un pulsante Sumo sulle miniature, visibile al passaggio del mouse o tramite
+  focus da tastiera
+- un pulsante Sumo stabile nella barra azioni della pagina video
+- l'apertura del riassunto in una nuova scheda su `https://sumo.moris.dev`
+
+L'estensione invia soltanto l'URL canonico del video. Non imposta la modalità,
+quindi Sumo usa il proprio default (`veloce`).
+
+Lo stesso pacchetto WebExtensions Manifest V3 funziona su Chrome, Brave e
+Firefox 140 o successivo. Firefox mostra in fase di installazione che
+l'estensione trasmette l'URL del video scelto a Sumo; non raccoglie la cronologia
+in background.
+
+### Installazione su Chrome o Brave
+
+1. Apri `chrome://extensions` in Chrome oppure Brave.
+2. Attiva **Modalità sviluppatore**.
+3. Seleziona **Carica estensione non pacchettizzata**.
+4. Scegli la cartella `extension/` di questo repository.
+
+Dopo una modifica ai file dell'estensione, usa il pulsante **Ricarica** nella
+scheda delle estensioni e aggiorna le pagine YouTube già aperte.
+
+### Installazione locale su Firefox
+
+1. Apri `about:debugging#/runtime/this-firefox` in Firefox.
+2. Seleziona **Carica componente aggiuntivo temporaneo**.
+3. Apri la cartella `extension/` di questo repository.
+4. Seleziona il file `manifest.json`.
+5. Apri o ricarica una pagina YouTube.
+
+L'installazione temporanea resta attiva fino al riavvio di Firefox. Dopo una
+modifica, torna in `about:debugging`, premi **Ricarica** sulla scheda di Sumo e
+ricarica anche YouTube.
+
+Firefox stabile richiede che i componenti aggiuntivi persistenti siano firmati
+da Mozilla. Per uso privato senza firma si puo usare l'installazione temporanea;
+Firefox Developer Edition, Nightly ed ESR permettono inoltre l'installazione di
+pacchetti non firmati disattivando `xpinstall.signatures.required` in
+`about:config`.
+
+### Installazione permanente e privata su Firefox stabile
+
+Per non dover ricaricare l'estensione dopo ogni riavvio, falla firmare da Mozilla
+come componente **non elencato** (self-distributed). Non verra pubblicata nello
+store e il file firmato resta privato.
+
+1. Accedi al Developer Hub di `addons.mozilla.org` con un account Mozilla.
+2. Crea un nuovo componente aggiuntivo e scegli la distribuzione autonoma/non
+   elencata.
+3. Carica un archivio ZIP che contenga direttamente i file della cartella
+   `extension/`, con `manifest.json` alla radice dell'archivio.
+4. Completa la validazione e scarica il file `.xpi` firmato.
+5. Apri `about:addons`, premi l'ingranaggio, scegli **Installa componente
+   aggiuntivo da file** e seleziona lo `.xpi`.
+
+In alternativa, dopo aver creato le credenziali API AMO, firma dalla root del
+repository con `web-ext`:
+
+```bash
+npx web-ext sign \
+  --source-dir extension \
+  --artifacts-dir web-ext-artifacts \
+  --channel unlisted \
+  --api-key "$AMO_JWT_ISSUER" \
+  --api-secret "$AMO_JWT_SECRET"
+```
+
+Il file firmato viene salvato in `web-ext-artifacts/`. Per pubblicare un
+aggiornamento bisogna aumentare `version`, firmare nuovamente e installare il
+nuovo `.xpi`.
+
+### Test
+
+I test dell'estensione non richiedono dipendenze npm:
+
+```bash
+node --test tests/extension.test.cjs
+```
