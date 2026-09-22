@@ -53,15 +53,14 @@ def fetch_transcript(url_or_id: str) -> dict:
     video_id = extract_video_id(url_or_id)
     try:
         proxy_url = (
-            f"http://{getenv('PROXY_USER')}:{getenv('PROXY_PWD')}"
+            f"https://{getenv('PROXY_USER')}:{getenv('PROXY_PWD')}"
             f"@{getenv('PROXY_IP')}:{getenv('PROXY_PORT')}"
         )
         yt_api = YouTubeTranscriptApi(
-            proxy_config=GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
+            proxy_config=GenericProxyConfig(https_url=proxy_url)
         )
         transcript = yt_api.fetch(video_id, languages=["it", "en"])
     except Exception as exc:
-        raise exc
         raise TranscriptError(
             "Impossibile recuperare la trascrizione. "
             "Verifica che il video abbia sottotitoli disponibili."
